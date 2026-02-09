@@ -225,26 +225,35 @@ function HB:GetVisibleSpells(barName)
               "inArena=" .. tostring(self.inArena))
     end
 
-    local enemySpecsByClass = self.enemySpecsByClass or {}
+    local enemySpecCountsByClass = self.enemySpecCountsByClass or {}
+    local enemyClassCounts = self.enemyClassCounts or {}
+    local duplicateEnabled = barDB.duplicateSameSpecClass
 
-    local function matchesEnemySpec(spellData)
+    local function getMatchCount(spellData)
+        local classFile = spellData.class
+        if not self.enemyClasses[classFile] then
+            return 0
+        end
+
         local specs = spellData.specs or {}
-        if #specs == 0 then
-            return true
-        end
-
-        local classSpecs = enemySpecsByClass[spellData.class]
-        if not classSpecs then
-            return false
-        end
-
-        for i = 1, #specs do
-            if classSpecs[specs[i]] then
-                return true
+        local specCounts = enemySpecCountsByClass[classFile]
+        if specCounts and next(specCounts) then
+            if #specs == 0 then
+                local total = 0
+                for _, count in pairs(specCounts) do
+                    total = total + count
+                end
+                return total
             end
+
+            local total = 0
+            for i = 1, #specs do
+                total = total + (specCounts[specs[i]] or 0)
+            end
+            return total
         end
 
-        return false
+        return enemyClassCounts[classFile] or 1
     end
 
     for spellKey, enabled in pairs(barDB.spells) do
@@ -256,13 +265,13 @@ function HB:GetVisibleSpells(barName)
                     tinsert(visibleSpells, spellData)
                 elseif self.inArena then
                     -- Arena: only show spells matching enemy classes/specs
-                    if self.enemyClasses[spellData.class] then
-                        if next(enemySpecsByClass[spellData.class] or {}) then
-                            if matchesEnemySpec(spellData) then
+                    local matchCount = getMatchCount(spellData)
+                    if matchCount > 0 then
+                        if duplicateEnabled then
+                            for i = 1, matchCount do
                                 tinsert(visibleSpells, spellData)
                             end
                         else
-                            -- If spec isn't known yet, fall back to class match.
                             tinsert(visibleSpells, spellData)
                         end
                     end

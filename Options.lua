@@ -383,6 +383,18 @@ function HB:BuildBarSettingsArgs(barName, barDB)
                 HB:UpdateBarSpells(barName)
             end,
         },
+        duplicateSameSpecClass = {
+            type = "toggle",
+            name = "Duplicate Same Spec/Class",
+            desc = "Show a second icon when multiple opponents share the same spec or class.",
+            order = 55,
+            width = "full",
+            get = function() return barDB.duplicateSameSpecClass end,
+            set = function(_, val)
+                barDB.duplicateSameSpecClass = val
+                HB:UpdateBarSpells(barName)
+            end,
+        },
         spacer2 = { type = "description", name = "\n", order = 85 },
         actionsHeader = {
             type = "header",

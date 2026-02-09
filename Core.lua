@@ -221,14 +221,14 @@ function HB:CreateDefaultBars()
     self.db.profile.bars["Defensives"] = self:GetBarDefaults("Defensives")
     self.db.profile.bars["Defensives"].spells = defSpells
     self.db.profile.bars["Defensives"].position = {
-        point = "CENTER", relativePoint = "CENTER", x = 0, y = 350,
+        point = "CENTER", relativePoint = "CENTER", x = 0, y = 320,
     }
 
     -- Offensives bar (centered, bottom)
     self.db.profile.bars["Offensives"] = self:GetBarDefaults("Offensives")
     self.db.profile.bars["Offensives"].spells = offSpells
     self.db.profile.bars["Offensives"].position = {
-        point = "CENTER", relativePoint = "CENTER", x = 0, y = -250,
+        point = "CENTER", relativePoint = "CENTER", x = 0, y = -230,
     }
 end
 
@@ -237,12 +237,13 @@ function HB:GetBarDefaults(name)
         name = name,
         enabled = true,
         spells = {},
-        iconSize = 36,
+        iconSize = 34,
         spacing = 2,
         growDirection = "RIGHT",
         showCooldownText = true,
         showIconBorder = true,
-        maxIcons = 0,
+        duplicateSameSpecClass = true,
+        maxIcons = 24,
         maxPerRow = 12,
         position = nil,
     }

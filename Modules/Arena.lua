@@ -26,12 +26,16 @@ function HB:OnPlayerEnteringWorld()
         -- Entering arena: reset state for fresh match
         self.enemyClasses = {}
         self.enemySpecsByClass = {}
+        self.enemyClassCounts = {}
+        self.enemySpecCountsByClass = {}
         self:ResetAllCooldowns()
         self:DetectArenaOpponents()
     elseif wasInArena then
         -- Leaving arena: clear enemy data
         self.enemyClasses = {}
         self.enemySpecsByClass = {}
+        self.enemyClassCounts = {}
+        self.enemySpecCountsByClass = {}
     end
 
     self:UpdateAllBars()
@@ -57,6 +61,8 @@ function HB:OnArenaPrepOpponentSpecs()
         self.inArena = true
         self.enemyClasses = {}
         self.enemySpecsByClass = {}
+        self.enemyClassCounts = {}
+        self.enemySpecCountsByClass = {}
     end
     
     self:DetectArenaOpponents()
@@ -83,10 +89,13 @@ end
 function HB:DetectArenaOpponents()
     self.enemyClasses = {}
     self.enemySpecsByClass = {}
+    self.enemyClassCounts = {}
+    self.enemySpecCountsByClass = {}
 
     local function addEnemy(classFile, specID)
         if not classFile then return end
         self.enemyClasses[classFile] = true
+        self.enemyClassCounts[classFile] = (self.enemyClassCounts[classFile] or 0) + 1
         if specID and specID > 0 then
             local bucket = self.enemySpecsByClass[classFile]
             if not bucket then
@@ -94,6 +103,13 @@ function HB:DetectArenaOpponents()
                 self.enemySpecsByClass[classFile] = bucket
             end
             bucket[specID] = true
+
+            local countBucket = self.enemySpecCountsByClass[classFile]
+            if not countBucket then
+                countBucket = {}
+                self.enemySpecCountsByClass[classFile] = countBucket
+            end
+            countBucket[specID] = (countBucket[specID] or 0) + 1
         end
     end
 
@@ -112,17 +128,23 @@ function HB:DetectArenaOpponents()
                 -- GetSpecializationInfoByID returns: id, name, description, icon, role, classFile, className
                 local _, _, _, _, _, classFile = GetSpecializationInfoByID(specID)
                 addEnemy(classFile, specID)
+            else
+                local unitID = "arena" .. i
+                if UnitExists(unitID) then
+                    local _, classFile = UnitClass(unitID)
+                    addEnemy(classFile, nil)
+                end
             end
         end
-    end
-
-    -- Method 2: UnitClass fallback (works when units are visible)
-    -- Covers edge cases and ensures we catch all opponents
-    for i = 1, 5 do
-        local unitID = "arena" .. i
-        if UnitExists(unitID) then
-            local _, classFile = UnitClass(unitID)
-            addEnemy(classFile, nil)
+    else
+        -- Method 2: UnitClass fallback (works when units are visible)
+        -- Covers edge cases when prep specs are unavailable
+        for i = 1, 5 do
+            local unitID = "arena" .. i
+            if UnitExists(unitID) then
+                local _, classFile = UnitClass(unitID)
+                addEnemy(classFile, nil)
+            end
         end
     end
     
@@ -155,6 +177,15 @@ function HB:DetectArenaOpponents()
             print("|cFF00FF00[HandyBar]|r   Enemy specs: " .. table.concat(specSummary, "; "))
         else
             print("|cFF00FF00[HandyBar]|r   Enemy specs: (none yet)")
+        end
+
+        local countSummary = {}
+        for classFile, count in pairs(self.enemyClassCounts) do
+            countSummary[#countSummary + 1] = classFile .. "=" .. tostring(count)
+        end
+        table.sort(countSummary)
+        if #countSummary > 0 then
+            print("|cFF00FF00[HandyBar]|r   Enemy class counts: " .. table.concat(countSummary, ", "))
         end
     end
 end
