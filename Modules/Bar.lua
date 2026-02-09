@@ -359,6 +359,7 @@ local function CooldownTimerOnUpdate(button, elapsed)
     end
 end
 
+
 function HB:GetOrCreateButton(barFrame)
     -- Try reusing from pool
     local button = tremove(barFrame.buttonPool)
@@ -576,8 +577,6 @@ function HB:UpdateBarSpells(barName)
         end
         return 
     end
-    
-    -- Avoid spam in debug mode; GetVisibleSpells() already prints a summary.
 
     -- Return current buttons to pool
     for _, button in ipairs(frame.activeButtons) do
@@ -752,6 +751,7 @@ function HB:StartSpellCooldown(button)
         local timerInfo = {
             startTime = startTime,
             endTime = endTime,
+            duration = duration,
         }
 
         -- Schedule recharge

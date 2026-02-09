@@ -454,23 +454,50 @@ function HB:BuildSpellArgs(barName, barDB)
             if #classSpells > 0 then
                 local classArgs = {}
 
-                -- Sort spells by localized name for easier browsing
-                table.sort(classSpells, function(a, b)
-                    local an = (self:GetSpellData(a.spellID).name or "")
-                    local bn = (self:GetSpellData(b.spellID).name or "")
-                    if an ~= bn then return an < bn end
-                    return a.key < b.key
+                -- Build spec buckets
+                local specBuckets = {}
+                local classSpecs = {}
+                for _, spec in pairs(MC.Specs) do
+                    if spec.class == classID then
+                        classSpecs[#classSpecs + 1] = spec
+                    end
+                end
+                table.sort(classSpecs, function(a, b)
+                    return (a.name or "") < (b.name or "")
                 end)
 
-                -- Enable All / Disable All buttons
-                classArgs.enableAll = {
+                for _, spell in ipairs(classSpells) do
+                    local specs = spell.specs or {}
+                    local bucketName
+
+                    if #specs == 0 then
+                        bucketName = "All Specs"
+                    elseif #specs == 1 then
+                        local specInfo = MC.SpecByID[specs[1]]
+                        bucketName = (specInfo and specInfo.name) or "Unknown Spec"
+                    else
+                        bucketName = "Multiple Specs"
+                    end
+
+                    if not specBuckets[bucketName] then
+                        specBuckets[bucketName] = {}
+                    end
+                    specBuckets[bucketName][#specBuckets[bucketName] + 1] = spell
+                end
+
+                -- Enable Default / Disable All buttons
+                classArgs.enableDefault = {
                     type = "execute",
-                    name = "Enable All",
+                    name = "Enable default",
                     order = 1,
-                    width = "half",
+                    width = "full",
                     func = function()
                         for _, spell in ipairs(classSpells) do
-                            barDB.spells[spell.key] = true
+                            if spell.defaultEnabled then
+                                barDB.spells[spell.key] = true
+                            else
+                                barDB.spells[spell.key] = nil
+                            end
                         end
                         HB:UpdateBarSpells(barName)
                     end,
@@ -479,7 +506,7 @@ function HB:BuildSpellArgs(barName, barDB)
                     type = "execute",
                     name = "Disable All",
                     order = 2,
-                    width = "half",
+                    width = "full",
                     func = function()
                         for _, spell in ipairs(classSpells) do
                             barDB.spells[spell.key] = nil
@@ -493,41 +520,67 @@ function HB:BuildSpellArgs(barName, barDB)
                     order = 3,
                 }
 
-                -- Individual spell toggles
+                -- Spec groups and spell toggles
                 local spellOrder = 10
-                for _, spell in ipairs(classSpells) do
-                    local spellInfo = self:GetSpellData(spell.spellID)
+                local specOrder = { "All Specs" }
+                for _, spec in ipairs(classSpecs) do
+                    specOrder[#specOrder + 1] = spec.name
+                end
+                if specBuckets["Unknown Spec"] then
+                    specOrder[#specOrder + 1] = "Unknown Spec"
+                end
+                specOrder[#specOrder + 1] = "Multiple Specs"
 
-                    -- Build descriptive name with inline icon
-                    local displayName = format(
-                        "|T%s:18:18|t %s  |cff888888(%ds)|r",
-                        tostring(spellInfo.icon),
-                        spellInfo.name,
-                        spell.duration
-                    )
+                for _, specName in ipairs(specOrder) do
+                    local bucket = specBuckets[specName]
+                    if bucket and #bucket > 0 then
+                        table.sort(bucket, function(a, b)
+                            local an = (self:GetSpellData(a.spellID).name or "")
+                            local bn = (self:GetSpellData(b.spellID).name or "")
+                            if an ~= bn then return an < bn end
+                            return a.key < b.key
+                        end)
 
-                    local desc = format(
-                        "Category: %s\nSpell ID: %d\nCharges: %d",
-                        spell.category or "Unknown",
-                        spell.spellID,
-                        spell.stack or 1
-                    )
+                        classArgs["header_" .. specName:gsub("%s", "_")] = {
+                            type = "header",
+                            name = specName,
+                            order = spellOrder,
+                        }
+                        spellOrder = spellOrder + 1
 
-                    classArgs["spell_" .. spell.key] = {
-                        type = "toggle",
-                        name = displayName,
-                        desc = desc,
-                        order = spellOrder,
-                        width = "full",
-                        get = function()
-                            return barDB.spells[spell.key] or false
-                        end,
-                        set = function(_, val)
-                            barDB.spells[spell.key] = val or nil
-                            HB:UpdateBarSpells(barName)
-                        end,
-                    }
-                    spellOrder = spellOrder + 1
+                        for _, spell in ipairs(bucket) do
+                            local spellInfo = self:GetSpellData(spell.spellID)
+                            local displayName = format(
+                                "|T%s:18:18|t %s  |cff888888(%ds)|r",
+                                tostring(spellInfo.icon),
+                                spellInfo.name,
+                                spell.duration
+                            )
+
+                            local desc = format(
+                                "Category: %s\nSpell ID: %d\nCharges: %d",
+                                spell.category or "Unknown",
+                                spell.spellID,
+                                spell.stack or 1
+                            )
+
+                            classArgs["spell_" .. spell.key] = {
+                                type = "toggle",
+                                name = displayName,
+                                desc = desc,
+                                order = spellOrder,
+                                width = "full",
+                                get = function()
+                                    return barDB.spells[spell.key] or false
+                                end,
+                                set = function(_, val)
+                                    barDB.spells[spell.key] = val or nil
+                                    HB:UpdateBarSpells(barName)
+                                end,
+                            }
+                            spellOrder = spellOrder + 1
+                        end
+                    end
                 end
 
                 -- Class group with colored name
