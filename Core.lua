@@ -85,6 +85,7 @@ function HB:OnInitialize()
     -- Runtime state
     self.barFrames = {}
     self.enemyClasses = {}
+    self.enemySpecsByClass = {}
     self.inArena = false
 
     -- Create default bars on first use
@@ -108,10 +109,6 @@ function HB:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("ARENA_PREP_OPPONENT_SPECIALIZATIONS", "OnArenaPrepOpponentSpecs")
     self:RegisterEvent("ARENA_OPPONENT_UPDATE", "OnArenaOpponentUpdate")
-
-    -- Zone changes: test mode must never persist across loads/zone transitions
-    self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "OnZoneChanged")
-    self:RegisterEvent("ZONE_CHANGED", "OnZoneChanged")
 
     -- Initial visibility update
     self:UpdateAllBars()

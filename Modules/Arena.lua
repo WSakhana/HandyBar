@@ -25,11 +25,13 @@ function HB:OnPlayerEnteringWorld()
     if self.inArena then
         -- Entering arena: reset state for fresh match
         self.enemyClasses = {}
+        self.enemySpecsByClass = {}
         self:ResetAllCooldowns()
         self:DetectArenaOpponents()
     elseif wasInArena then
         -- Leaving arena: clear enemy data
         self.enemyClasses = {}
+        self.enemySpecsByClass = {}
     end
 
     self:UpdateAllBars()
@@ -54,6 +56,7 @@ function HB:OnArenaPrepOpponentSpecs()
     if not self.inArena then
         self.inArena = true
         self.enemyClasses = {}
+        self.enemySpecsByClass = {}
     end
     
     self:DetectArenaOpponents()
@@ -79,6 +82,20 @@ end
 
 function HB:DetectArenaOpponents()
     self.enemyClasses = {}
+    self.enemySpecsByClass = {}
+
+    local function addEnemy(classFile, specID)
+        if not classFile then return end
+        self.enemyClasses[classFile] = true
+        if specID and specID > 0 then
+            local bucket = self.enemySpecsByClass[classFile]
+            if not bucket then
+                bucket = {}
+                self.enemySpecsByClass[classFile] = bucket
+            end
+            bucket[specID] = true
+        end
+    end
 
     -- Method 1: Arena Prep API (preferred, works even before UnitExists)
     -- This is the robust way on Retail - provides specs during prep phase
@@ -93,11 +110,8 @@ function HB:DetectArenaOpponents()
             local specID = GetArenaOpponentSpec(i) or 0
             if specID > 0 then
                 -- GetSpecializationInfoByID returns: id, name, description, icon, role, classFile, className
-                local specIDRet, specName, _, specIcon, _, classFile, className = GetSpecializationInfoByID(specID)
-                if classFile then
-                    self.enemyClasses[classFile] = true
-                    -- Avoid per-opponent spam; summary printed below.
-                end
+                local _, _, _, _, _, classFile = GetSpecializationInfoByID(specID)
+                addEnemy(classFile, specID)
             end
         end
     end
@@ -108,11 +122,7 @@ function HB:DetectArenaOpponents()
         local unitID = "arena" .. i
         if UnitExists(unitID) then
             local _, classFile = UnitClass(unitID)
-            if classFile then
-                local wasNew = not self.enemyClasses[classFile]
-                self.enemyClasses[classFile] = true
-                -- Avoid per-unit spam; summary printed below.
-            end
+            addEnemy(classFile, nil)
         end
     end
     
@@ -127,6 +137,25 @@ function HB:DetectArenaOpponents()
         else
             print("|cFF00FF00[HandyBar]|r   Enemy classes: (none yet)")
         end
+
+        local specSummary = {}
+        for classFile, specs in pairs(self.enemySpecsByClass) do
+            local names = {}
+            for specID in pairs(specs) do
+                local _, specName = GetSpecializationInfoByID(specID)
+                names[#names + 1] = specName or tostring(specID)
+            end
+            table.sort(names)
+            if #names > 0 then
+                specSummary[#specSummary + 1] = classFile .. "=" .. table.concat(names, "/")
+            end
+        end
+        table.sort(specSummary)
+        if #specSummary > 0 then
+            print("|cFF00FF00[HandyBar]|r   Enemy specs: " .. table.concat(specSummary, "; "))
+        else
+            print("|cFF00FF00[HandyBar]|r   Enemy specs: (none yet)")
+        end
     end
 end
 
@@ -140,4 +169,8 @@ end
 
 function HB:GetEnemyClasses()
     return self.enemyClasses
+end
+
+function HB:GetEnemySpecsByClass()
+    return self.enemySpecsByClass
 end

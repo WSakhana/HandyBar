@@ -225,6 +225,28 @@ function HB:GetVisibleSpells(barName)
               "inArena=" .. tostring(self.inArena))
     end
 
+    local enemySpecsByClass = self.enemySpecsByClass or {}
+
+    local function matchesEnemySpec(spellData)
+        local specs = spellData.specs or {}
+        if #specs == 0 then
+            return true
+        end
+
+        local classSpecs = enemySpecsByClass[spellData.class]
+        if not classSpecs then
+            return false
+        end
+
+        for i = 1, #specs do
+            if classSpecs[specs[i]] then
+                return true
+            end
+        end
+
+        return false
+    end
+
     for spellKey, enabled in pairs(barDB.spells) do
         if enabled then
             local spellData = MC:GetByKey(spellKey)
@@ -233,9 +255,16 @@ function HB:GetVisibleSpells(barName)
                     -- Test mode: show ALL assigned spells
                     tinsert(visibleSpells, spellData)
                 elseif self.inArena then
-                    -- Arena: only show spells matching enemy classes
+                    -- Arena: only show spells matching enemy classes/specs
                     if self.enemyClasses[spellData.class] then
-                        tinsert(visibleSpells, spellData)
+                        if next(enemySpecsByClass[spellData.class] or {}) then
+                            if matchesEnemySpec(spellData) then
+                                tinsert(visibleSpells, spellData)
+                            end
+                        else
+                            -- If spec isn't known yet, fall back to class match.
+                            tinsert(visibleSpells, spellData)
+                        end
                     end
                 end
                 -- Outside arena + no test mode: show nothing
