@@ -286,8 +286,15 @@ function HB:RegisterCustomSpell(spellID, duration, classID, category, specs)
         specs = specs or {},
     }
 
-    -- Register with MajorCooldowns if not already there
-    if not MC:GetByKey(key) then
+    -- Register or update in MajorCooldowns
+    local existing = MC:GetByKey(key)
+    if existing then
+        -- Update existing entry fields
+        existing.duration = duration
+        existing.class = classID
+        existing.category = category or MC.Category.UTILITY
+        existing.specs = specs or {}
+    else
         MC:Register({
             key = key,
             spellID = spellID,

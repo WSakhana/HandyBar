@@ -32,7 +32,32 @@ local customSpellForm = {
     class = "WARRIOR",
     spec = 0,  -- 0 = All Specs (class ability)
     category = "Utility",
+    editing = false,  -- true when editing an existing spell
 }
+
+-- Helper: load existing custom spell data into the form
+local function LoadCustomSpellIntoForm(spellID)
+    local data = HB.db.profile.customSpells[spellID]
+    if data then
+        customSpellForm.spellID = tostring(spellID)
+        customSpellForm.duration = data.duration
+        customSpellForm.class = data.class
+        customSpellForm.category = data.category or "Utility"
+        customSpellForm.editing = true
+        local specs = data.specs or {}
+        customSpellForm.spec = (#specs == 1) and specs[1] or 0
+    end
+end
+
+-- Helper: reset the form to defaults
+local function ResetCustomSpellForm()
+    customSpellForm.spellID = ""
+    customSpellForm.duration = 120
+    customSpellForm.class = "WARRIOR"
+    customSpellForm.spec = 0
+    customSpellForm.category = "Utility"
+    customSpellForm.editing = false
+end
 
 ------------------------------------------------------------------------
 -- Setup
@@ -501,6 +526,7 @@ end
 function HB:BuildSpellArgs(barName, barDB)
     local MC = self.MC
     local args = {}
+    local customSpells = self.db.profile.customSpells or {}
 
     -- Ensure spells table exists
     if not barDB.spells then
@@ -511,7 +537,18 @@ function HB:BuildSpellArgs(barName, barDB)
         local classInfo = MC.Classes[classID]
         if classInfo then
             local classSpells = MC:GetByClass(classID)
-            if #classSpells > 0 then
+            local filteredClassSpells = {}
+            for _, spell in ipairs(classSpells) do
+                if spell.key and spell.key:sub(1, 7) == "custom_" then
+                    if customSpells[spell.spellID] then
+                        filteredClassSpells[#filteredClassSpells + 1] = spell
+                    end
+                else
+                    filteredClassSpells[#filteredClassSpells + 1] = spell
+                end
+            end
+
+            if #filteredClassSpells > 0 then
                 local classArgs = {}
 
                 -- Build spec buckets
@@ -526,7 +563,7 @@ function HB:BuildSpellArgs(barName, barDB)
                     return (a.name or "") < (b.name or "")
                 end)
 
-                for _, spell in ipairs(classSpells) do
+                for _, spell in ipairs(filteredClassSpells) do
                     local specs = spell.specs or {}
                     local bucketName
 
@@ -552,7 +589,7 @@ function HB:BuildSpellArgs(barName, barDB)
                     order = 1,
                     width = "full",
                     func = function()
-                        for _, spell in ipairs(classSpells) do
+                        for _, spell in ipairs(filteredClassSpells) do
                             if spell.defaultEnabled then
                                 barDB.spells[spell.key] = true
                             else
@@ -568,7 +605,7 @@ function HB:BuildSpellArgs(barName, barDB)
                     order = 2,
                     width = "full",
                     func = function()
-                        for _, spell in ipairs(classSpells) do
+                        for _, spell in ipairs(filteredClassSpells) do
                             barDB.spells[spell.key] = nil
                         end
                         HB:UpdateBarSpells(barName)
@@ -867,150 +904,15 @@ function HB:BuildCustomSpellArgs()
         fontSize = "medium",
     }
 
-    -- Build class values for dropdown
-    local classValues = {}
-    for _, classID in ipairs(CLASS_ORDER) do
-        local classInfo = MC.Classes[classID]
-        if classInfo then
-            classValues[classID] = classInfo.name
-        end
-    end
-
-    -- Build spec values filtered by the currently selected class
-    local specValues = { [0] = L["All Specs"] .. " (" .. L["Class Ability"] .. ")" }
-    for _, spec in pairs(MC.Specs) do
-        if spec.class == customSpellForm.class then
-            specValues[spec.id] = spec.name
-        end
-    end
-
-    -- Build category values for dropdown
-    local categoryValues = {}
-    for catKey, catName in pairs(MC.Category) do
-        categoryValues[catName] = catName
-    end
-
-    -- ---- Add Custom Spell form ----
-    args.addHeader = {
-        type = "header",
-        name = L["Add Custom Spell"],
-        order = 2,
-    }
-    args.spellID = {
-        type = "input",
-        name = L["Spell ID"],
-        desc = L["SPELL_ID_DESC"],
-        order = 3,
-        width = "normal",
-        get = function() return customSpellForm.spellID end,
-        set = function(_, val)
-            customSpellForm.spellID = val
-            HB:RefreshOptions()
-        end,
-    }
-
-    -- Preview: show spell name + icon when a valid spell ID is entered
-    local previewID = tonumber(customSpellForm.spellID)
-    if previewID and previewID > 0 then
-        local previewInfo = self:GetSpellData(previewID)
-        args.preview = {
-            type = "description",
-            name = format(
-                "|T%s:20:20|t  |cffffffff%s|r",
-                tostring(previewInfo.icon),
-                previewInfo.name
-            ),
-            order = 3.5,
-            fontSize = "medium",
-        }
-    end
-
-    args.duration = {
-        type = "range",
-        name = L["Cooldown (seconds)"],
-        desc = L["CD_SECONDS_DESC"],
-        order = 4,
-        min = 1, max = 600, step = 1, bigStep = 5,
-        get = function() return customSpellForm.duration end,
-        set = function(_, val) customSpellForm.duration = val end,
-    }
-    args.classSelect = {
-        type = "select",
-        name = L["Class"],
-        desc = L["CLASS_DESC"],
-        order = 5,
-        values = classValues,
-        get = function() return customSpellForm.class end,
-        set = function(_, val)
-            customSpellForm.class = val
-            customSpellForm.spec = 0  -- reset spec when class changes
-            HB:RefreshOptions()
-        end,
-    }
-    args.specSelect = {
-        type = "select",
-        name = L["Specialization"],
-        desc = L["SPEC_DESC"],
-        order = 6,
-        values = specValues,
-        get = function() return customSpellForm.spec end,
-        set = function(_, val) customSpellForm.spec = val end,
-    }
-    args.categorySelect = {
-        type = "select",
-        name = L["Category"],
-        desc = L["CATEGORY_DESC"],
-        order = 7,
-        values = categoryValues,
-        get = function() return customSpellForm.category end,
-        set = function(_, val) customSpellForm.category = val end,
-    }
-    args.addButton = {
-        type = "execute",
-        name = L["Add Custom Spell"],
-        order = 8,
-        func = function()
-            local spellID = tonumber(customSpellForm.spellID)
-            if not spellID or spellID <= 0 then
-                HB:Print(L["CUSTOM_INVALID_ID"])
-                return
-            end
-            if HB.db.profile.customSpells[spellID] then
-                HB:Print(L["CUSTOM_ALREADY_EXISTS"])
-                return
-            end
-            local specs = {}
-            if customSpellForm.spec ~= 0 then
-                specs = { customSpellForm.spec }
-            end
-            local key = HB:RegisterCustomSpell(
-                spellID,
-                customSpellForm.duration,
-                customSpellForm.class,
-                customSpellForm.category,
-                specs
-            )
-            local spellInfo = HB:GetSpellData(spellID)
-            HB:Print(format(L["CUSTOM_ADDED"], spellInfo.name, spellID))
-            -- Reset form
-            customSpellForm.spellID = ""
-            customSpellForm.duration = 120
-            customSpellForm.class = "WARRIOR"
-            customSpellForm.spec = 0
-            customSpellForm.category = "Utility"
-            HB:RefreshOptions()
-        end,
-    }
-
-    -- ---- List existing custom spells ----
+    -- ---- Existing custom spells list (shown LAST) ----
     args.customListHeader = {
         type = "header",
         name = L["Custom Spells"],
-        order = 10,
+        order = 200,
     }
 
     local customSpells = self.db.profile.customSpells or {}
-    local listOrder = 11
+    local listOrder = 201
 
     -- Sort by spellID for consistent display
     local sortedIDs = {}
@@ -1025,6 +927,7 @@ function HB:BuildCustomSpellArgs()
             name = "|cff888888" .. L["No custom spells added yet."] .. "|r\n",
             order = listOrder,
         }
+        listOrder = listOrder + 1
     else
         for _, spellID in ipairs(sortedIDs) do
             local data = customSpells[spellID]
@@ -1048,23 +951,36 @@ function HB:BuildCustomSpellArgs()
             groupArgs.info = {
                 type = "description",
                 name = format(
-                    "%s: %d  |  %s: %ds  |  %s: |cff%s%s|r  |  %s: %s  |  %s: %s",
-                    L["Spell ID"], spellID,
+                    "%s: %ds  |  |cff%s%s|r / %s  |  %s: %s",
                     L["Cooldown (seconds)"], data.duration,
-                    L["Class"], colorHex, className,
-                    L["Specialization"], specName,
+                    colorHex, className,
+                    specName,
                     L["Category"], data.category or "Utility"
                 ),
                 order = 1,
             }
 
+            groupArgs.edit = {
+                type = "execute",
+                name = L["Edit"],
+                order = 2,
+                func = function()
+                    LoadCustomSpellIntoForm(spellID)
+                    HB:RefreshOptions()
+                end,
+            }
+
             groupArgs.remove = {
                 type = "execute",
                 name = "|cffff0000" .. L["Remove"] .. "|r",
-                order = 2,
+                order = 3,
                 confirm = true,
                 confirmText = format(L["REMOVE_CUSTOM_CONFIRM"], spellInfo.name),
                 func = function()
+                    -- If we're editing this spell, clear the form
+                    if tonumber(customSpellForm.spellID) == spellID then
+                        ResetCustomSpellForm()
+                    end
                     HB:RemoveCustomSpell(spellID)
                     HB:Print(format(L["CUSTOM_REMOVED"], spellInfo.name))
                     HB:UpdateAllBars()
@@ -1081,6 +997,175 @@ function HB:BuildCustomSpellArgs()
             }
             listOrder = listOrder + 1
         end
+    end
+
+    -- ---- Add / Edit form ----
+    local isEditing = customSpellForm.editing
+    local formTitle = isEditing and L["Edit Custom Spell"] or L["Add Custom Spell"]
+
+    args.formHeader = {
+        type = "header",
+        name = formTitle,
+        order = 100,
+    }
+
+    -- Build class values for dropdown
+    local classValues = {}
+    for _, classID in ipairs(CLASS_ORDER) do
+        local classInfo = MC.Classes[classID]
+        if classInfo then
+            classValues[classID] = classInfo.name
+        end
+    end
+
+    -- Build spec values filtered by the currently selected class
+    local specValues = { [0] = L["All Specs"] .. " (" .. L["Class Ability"] .. ")" }
+    for _, spec in pairs(MC.Specs) do
+        if spec.class == customSpellForm.class then
+            specValues[spec.id] = spec.name
+        end
+    end
+
+    -- Build category values for dropdown
+    local categoryValues = {}
+    for catKey, catName in pairs(MC.Category) do
+        categoryValues[catName] = catName
+    end
+
+    args.spellID = {
+        type = "input",
+        name = L["Spell ID"],
+        desc = L["SPELL_ID_DESC"],
+        order = 101,
+        width = "normal",
+        disabled = isEditing,  -- can't change spell ID when editing
+        get = function() return customSpellForm.spellID end,
+        set = function(_, val)
+            customSpellForm.spellID = val
+            -- Check if this spell already exists -> auto-switch to edit mode
+            local id = tonumber(val)
+            if id and id > 0 and HB.db.profile.customSpells[id] then
+                LoadCustomSpellIntoForm(id)
+            else
+                customSpellForm.editing = false
+            end
+            HB:RefreshOptions()
+        end,
+    }
+
+    -- Preview: show spell name + icon when a valid spell ID is entered
+    local previewID = tonumber(customSpellForm.spellID)
+    if previewID and previewID > 0 then
+        local previewInfo = self:GetSpellData(previewID)
+        local previewText = format(
+            "|T%s:20:20|t  |cffffffff%s|r  (ID: %d)",
+            tostring(previewInfo.icon),
+            previewInfo.name,
+            previewID
+        )
+        if isEditing then
+            previewText = previewText .. "  |cff00ccff[" .. L["Editing"] .. "]|r"
+        end
+        args.preview = {
+            type = "description",
+            name = previewText,
+            order = 102,
+            fontSize = "medium",
+        }
+    end
+
+    args.classSelect = {
+        type = "select",
+        name = L["Class"],
+        desc = L["CLASS_DESC"],
+        order = 103,
+        values = classValues,
+        get = function() return customSpellForm.class end,
+        set = function(_, val)
+            customSpellForm.class = val
+            customSpellForm.spec = 0  -- reset spec when class changes
+            HB:RefreshOptions()
+        end,
+    }
+    args.specSelect = {
+        type = "select",
+        name = L["Specialization"],
+        desc = L["SPEC_DESC"],
+        order = 104,
+        values = specValues,
+        get = function() return customSpellForm.spec end,
+        set = function(_, val) customSpellForm.spec = val end,
+    }
+    args.categorySelect = {
+        type = "select",
+        name = L["Category"],
+        desc = L["CATEGORY_DESC"],
+        order = 105,
+        values = categoryValues,
+        get = function() return customSpellForm.category end,
+        set = function(_, val) customSpellForm.category = val end,
+    }
+    args.duration = {
+        type = "range",
+        name = L["Cooldown (seconds)"],
+        desc = L["CD_SECONDS_DESC"],
+        order = 106,
+        min = 1, max = 600, step = 1, bigStep = 5,
+        width = "double",
+        get = function() return customSpellForm.duration end,
+        set = function(_, val) customSpellForm.duration = val end,
+    }
+
+    -- Save / Add button
+    args.saveButton = {
+        type = "execute",
+        name = isEditing and ("|cff00ff00" .. L["Save Changes"] .. "|r") or L["Add Custom Spell"],
+        order = 107,
+        func = function()
+            local spellID = tonumber(customSpellForm.spellID)
+            if not spellID or spellID <= 0 then
+                HB:Print(L["CUSTOM_INVALID_ID"])
+                return
+            end
+            -- Block adding duplicates (but allow saving edits)
+            if not customSpellForm.editing and HB.db.profile.customSpells[spellID] then
+                HB:Print(L["CUSTOM_ALREADY_EXISTS"])
+                return
+            end
+            local specs = {}
+            if customSpellForm.spec ~= 0 then
+                specs = { customSpellForm.spec }
+            end
+            HB:RegisterCustomSpell(
+                spellID,
+                customSpellForm.duration,
+                customSpellForm.class,
+                customSpellForm.category,
+                specs
+            )
+            local spellInfo = HB:GetSpellData(spellID)
+            if customSpellForm.editing then
+                HB:Print(format(L["CUSTOM_UPDATED"], spellInfo.name, spellID))
+            else
+                HB:Print(format(L["CUSTOM_ADDED"], spellInfo.name, spellID))
+            end
+            ResetCustomSpellForm()
+            HB:UpdateAllBars()
+            HB:RefreshOptions()
+        end,
+    }
+
+    -- Cancel button (only shown in edit mode)
+    if isEditing then
+        args.cancelButton = {
+            type = "execute",
+            name = L["Cancel"],
+            order = 108,
+            func = function()
+                ResetCustomSpellForm()
+                HB:RefreshOptions()
+            end,
+        }
     end
 
     return args
