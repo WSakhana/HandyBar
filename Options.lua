@@ -1,15 +1,17 @@
 ------------------------------------------------------------------------
 -- HandyBar - Options
--- AceConfig-3.0 configuration interface
+-- AceConfig-3.0 configuration interface (refactored)
 ------------------------------------------------------------------------
 local addonName, ns = ...
 local HB = ns.HB
+local L = HB.L
 
 -- Local references
 local format = string.format
 local pairs = pairs
 local ipairs = ipairs
 local tostring = tostring
+local tonumber = tonumber
 
 ------------------------------------------------------------------------
 -- Class display order for spell lists
@@ -22,6 +24,15 @@ local CLASS_ORDER = {
 
 -- State for new bar creation
 local newBarName = ""
+
+-- State for custom spell creation form
+local customSpellForm = {
+    spellID = "",
+    duration = 120,
+    class = "WARRIOR",
+    spec = 0,  -- 0 = All Specs (class ability)
+    category = "Utility",
+}
 
 ------------------------------------------------------------------------
 -- Setup
@@ -64,8 +75,9 @@ function HB:GetOptions()
         name = "|cff00ccffHandyBar|r",
         childGroups = "tab",
         args = {
-            general = self:GetGeneralOptions(),
-            bars = self:GetBarsContainerOptions(),
+            general   = self:GetGeneralOptions(),
+            bars      = self:GetBarsContainerOptions(),
+            customize = self:GetCustomizeOptions(),
         },
     }
 end
@@ -77,22 +89,20 @@ end
 function HB:GetGeneralOptions()
     return {
         type = "group",
-        name = "General",
+        name = L["General"],
         order = 1,
         args = {
             header = {
                 type = "description",
-                name = "|cff00ccffHandyBar|r is a manual cooldown tracking addon for PvP Arenas.\n"
-                    .. "Click enemy spell icons when you see them used to start tracking their cooldowns.\n"
-                    .. "Right-click to reset a cooldown.\n",
+                name = L["ADDON_DESC"],
                 order = 1,
                 fontSize = "medium",
             },
             spacer0 = { type = "description", name = " ", order = 5 },
             testMode = {
                 type = "toggle",
-                name = "Test Mode",
-                desc = "Show all bars and spells for layout testing. Arena filtering is ignored.\n\n|cFFFF8800Note:|r Test Mode is not persisted and is automatically disabled on reloads and zone changes.",
+                name = L["Test Mode"],
+                desc = L["TEST_MODE_DESC"],
                 order = 10,
                 width = "full",
                 get = function() return HB:IsTestMode() end,
@@ -106,8 +116,8 @@ function HB:GetGeneralOptions()
             },
             locked = {
                 type = "toggle",
-                name = "Lock Bars",
-                desc = "Prevent bars from being moved. Hides bar titles and background.",
+                name = L["Lock Bars"],
+                desc = L["LOCK_BARS_DESC"],
                 order = 20,
                 width = "full",
                 get = function() return HB.db.profile.locked end,
@@ -122,52 +132,48 @@ function HB:GetGeneralOptions()
             },
             debug = {
                 type = "toggle",
-                name = "Debug Mode",
-                desc = "Print debug messages to chat for arena enemy detection (helps troubleshoot issues).",
+                name = L["Debug Mode"],
+                desc = L["DEBUG_MODE_DESC"],
                 order = 22,
                 width = "full",
                 get = function() return HB.db.profile.debug end,
                 set = function(_, val)
                     HB.db.profile.debug = val
                     if val then
-                        print("|cFF00FF00[HandyBar]|r Debug mode enabled. You'll see detection messages in arena.")
+                        print(L["Debug mode enabled."])
                     else
-                        print("|cFF00FF00[HandyBar]|r Debug mode disabled.")
+                        print(L["Debug mode disabled."])
                     end
                 end,
             },
             spacer1 = { type = "description", name = "\n", order = 25 },
             resetAll = {
                 type = "execute",
-                name = "Reset All Cooldowns",
-                desc = "Reset all active cooldowns on every bar.",
+                name = L["Reset All Cooldowns"],
+                desc = L["RESET_ALL_CD_DESC"],
                 order = 30,
                 func = function()
                     HB:ResetAllCooldowns()
-                    HB:Print("All cooldowns reset.")
+                    HB:Print(L["All cooldowns reset."])
                 end,
                 confirm = true,
-                confirmText = "Reset all active cooldowns?",
+                confirmText = L["Reset all active cooldowns?"],
             },
             resetConfig = {
                 type = "execute",
-                name = "|cffff0000Reset Configuration|r",
-                desc = "Reset all HandyBar settings (including bars and spell selections) back to defaults.",
+                name = "|cffff0000" .. L["Reset Configuration"] .. "|r",
+                desc = L["RESET_CONFIG_DESC"],
                 order = 32,
                 func = function()
                     HB:ResetConfiguration()
                 end,
                 confirm = true,
-                confirmText = "Reset ALL HandyBar configuration to defaults?",
+                confirmText = L["RESET_CONFIG_CONFIRM"],
             },
             spacer2 = { type = "description", name = "\n", order = 35 },
             commands = {
                 type = "description",
-                name = "|cff888888Slash Commands:|r\n"
-                    .. "  |cff00ff00/hb|r          - Open this configuration\n"
-                    .. "  |cff00ff00/hb test|r      - Toggle Test Mode\n"
-                    .. "  |cff00ff00/hb lock|r      - Toggle bar locking\n"
-                    .. "  |cff00ff00/hb reset|r     - Reset all cooldowns\n",
+                name = L["SLASH_COMMANDS_DESC"],
                 order = 40,
                 fontSize = "medium",
             },
@@ -183,13 +189,13 @@ function HB:GetBarsContainerOptions()
     local args = {
         newBarHeader = {
             type = "header",
-            name = "Create New Bar",
+            name = L["Create New Bar"],
             order = 1,
         },
         newBarName = {
             type = "input",
-            name = "Bar Name",
-            desc = "Enter a unique name for the new bar.",
+            name = L["Bar Name"],
+            desc = L["BAR_NAME_DESC"],
             order = 2,
             width = "double",
             get = function() return newBarName end,
@@ -197,16 +203,16 @@ function HB:GetBarsContainerOptions()
         },
         createBar = {
             type = "execute",
-            name = "Create Bar",
+            name = L["Create Bar"],
             order = 3,
             func = function()
                 local name = (newBarName or ""):trim()
                 if name == "" then
-                    HB:Print("Please enter a bar name.")
+                    HB:Print(L["Please enter a bar name."])
                     return
                 end
                 if HB.db.profile.bars[name] then
-                    HB:Print("A bar named '" .. name .. "' already exists!")
+                    HB:Print(format(L["BAR_EXISTS"], name))
                     return
                 end
                 HB.db.profile.bars[name] = HB:GetBarDefaults(name)
@@ -214,7 +220,7 @@ function HB:GetBarsContainerOptions()
                 HB:UpdateBarSpells(name)
                 newBarName = ""
                 HB:RefreshOptions()
-                HB:Print("Bar '|cff00ff00" .. name .. "|r' created.")
+                HB:Print(format(L["BAR_CREATED"], name))
             end,
         },
         barsSpacer = {
@@ -240,7 +246,7 @@ function HB:GetBarsContainerOptions()
 
     return {
         type = "group",
-        name = "Bars",
+        name = L["Bars"],
         order = 2,
         childGroups = "tree",
         args = args,
@@ -258,14 +264,20 @@ function HB:BuildSingleBarArgs(barName)
     return {
         settings = {
             type = "group",
-            name = "Settings",
+            name = L["Appearance"],
             order = 1,
             args = self:BuildBarSettingsArgs(barName, barDB),
         },
+        arenaVisibility = {
+            type = "group",
+            name = L["Arena Visibility"],
+            order = 2,
+            args = self:BuildArenaVisibilityArgs(barName, barDB),
+        },
         spells = {
             type = "group",
-            name = "Spells",
-            order = 2,
+            name = L["Spells"],
+            order = 3,
             childGroups = "tree",
             args = self:BuildSpellArgs(barName, barDB),
         },
@@ -273,15 +285,15 @@ function HB:BuildSingleBarArgs(barName)
 end
 
 ------------------------------------------------------------------------
--- Bar Settings Arguments
+-- Bar Settings (Appearance)
 ------------------------------------------------------------------------
 
 function HB:BuildBarSettingsArgs(barName, barDB)
     return {
         enabled = {
             type = "toggle",
-            name = "Enabled",
-            desc = "Enable or disable this bar.",
+            name = L["Enabled"],
+            desc = L["ENABLED_DESC"],
             order = 1,
             width = "full",
             get = function() return barDB.enabled end,
@@ -298,8 +310,8 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         spacer1 = { type = "description", name = "", order = 5 },
         iconSize = {
             type = "range",
-            name = "Icon Size",
-            desc = "Size of spell icons in pixels.",
+            name = L["Icon Size"],
+            desc = L["ICON_SIZE_DESC"],
             order = 10,
             min = 20, max = 64, step = 1,
             get = function() return barDB.iconSize end,
@@ -310,8 +322,8 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         },
         spacing = {
             type = "range",
-            name = "Spacing",
-            desc = "Space between icons in pixels.",
+            name = L["Spacing"],
+            desc = L["SPACING_DESC"],
             order = 20,
             min = 0, max = 20, step = 1,
             get = function() return barDB.spacing end,
@@ -322,8 +334,8 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         },
         maxPerRow = {
             type = "range",
-            name = "Max Icons Per Row",
-            desc = "Maximum number of icons per row. Bar will wrap to multiple rows if needed.",
+            name = L["Max Icons Per Row"],
+            desc = L["MAX_PER_ROW_DESC"],
             order = 25,
             min = 1, max = 20, step = 1,
             get = function() return barDB.maxPerRow or 12 end,
@@ -334,8 +346,8 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         },
         maxIcons = {
             type = "range",
-            name = "Icon Display Limit",
-            desc = "Limit how many spell icons can be displayed on this bar. Set to 0 for unlimited.",
+            name = L["Icon Display Limit"],
+            desc = L["MAX_ICONS_DESC"],
             order = 26,
             min = 0, max = 60, step = 1,
             get = function() return barDB.maxIcons or 0 end,
@@ -346,14 +358,14 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         },
         growDirection = {
             type = "select",
-            name = "Grow Direction",
-            desc = "Direction icons are added. Rows grow horizontally, and stack vertically.",
+            name = L["Grow Direction"],
+            desc = L["GROW_DIR_DESC"],
             order = 30,
             values = {
-                RIGHT = "Right (rows stack down)",
-                LEFT = "Left (rows stack down)",
-                DOWN = "Down (columns stack right)",
-                UP = "Up (columns stack right)",
+                RIGHT = L["Right (rows stack down)"],
+                LEFT  = L["Left (rows stack down)"],
+                DOWN  = L["Down (columns stack right)"],
+                UP    = L["Up (columns stack right)"],
             },
             get = function() return barDB.growDirection end,
             set = function(_, val)
@@ -363,8 +375,8 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         },
         showCooldownText = {
             type = "toggle",
-            name = "Show Cooldown Text",
-            desc = "Display remaining time text on icons during cooldown.",
+            name = L["Show Cooldown Text"],
+            desc = L["SHOW_CD_TEXT_DESC"],
             order = 40,
             get = function() return barDB.showCooldownText end,
             set = function(_, val)
@@ -374,8 +386,8 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         },
         showIconBorder = {
             type = "toggle",
-            name = "Show Icon Border",
-            desc = "Display class-colored borders around icons.",
+            name = L["Show Icon Border"],
+            desc = L["SHOW_BORDER_DESC"],
             order = 50,
             get = function() return barDB.showIconBorder ~= false end,
             set = function(_, val)
@@ -383,38 +395,26 @@ function HB:BuildBarSettingsArgs(barName, barDB)
                 HB:UpdateBarSpells(barName)
             end,
         },
-        duplicateSameSpecClass = {
-            type = "toggle",
-            name = "Duplicate Same Spec/Class",
-            desc = "Show a second icon when multiple opponents share the same spec or class.",
-            order = 55,
-            width = "full",
-            get = function() return barDB.duplicateSameSpecClass end,
-            set = function(_, val)
-                barDB.duplicateSameSpecClass = val
-                HB:UpdateBarSpells(barName)
-            end,
-        },
         spacer2 = { type = "description", name = "\n", order = 85 },
         actionsHeader = {
             type = "header",
-            name = "Actions",
+            name = L["Actions"],
             order = 86,
         },
         resetCooldowns = {
             type = "execute",
-            name = "Reset Bar Cooldowns",
-            desc = "Reset all active cooldowns on this bar.",
+            name = L["Reset Bar Cooldowns"],
+            desc = L["RESET_BAR_CD_DESC"],
             order = 90,
             func = function()
                 HB:ResetBarCooldowns(barName)
-                HB:Print("Cooldowns reset for bar: " .. barName)
+                HB:Print(format(L["COOLDOWNS_RESET_BAR"], barName))
             end,
         },
         resetPosition = {
             type = "execute",
-            name = "Reset Position",
-            desc = "Move this bar back to the center of the screen.",
+            name = L["Reset Position"],
+            desc = L["RESET_POS_DESC"],
             order = 91,
             func = function()
                 barDB.position = nil
@@ -428,19 +428,67 @@ function HB:BuildBarSettingsArgs(barName, barDB)
         spacer3 = { type = "description", name = "\n\n", order = 95 },
         deleteBar = {
             type = "execute",
-            name = "|cffff0000Delete This Bar|r",
-            desc = "Permanently remove this bar and all its settings.",
+            name = "|cffff0000" .. L["Delete This Bar"] .. "|r",
+            desc = L["DELETE_BAR_DESC"],
             order = 100,
             confirm = true,
-            confirmText = format(
-                "Are you sure you want to delete the bar '%s'?\nThis cannot be undone.",
-                barName
-            ),
+            confirmText = format(L["DELETE_BAR_CONFIRM"], barName),
             func = function()
                 HB:DestroyBar(barName)
                 HB.db.profile.bars[barName] = nil
-                HB:Print("Bar '|cffff0000" .. barName .. "|r' deleted.")
+                HB:Print(format(L["BAR_DELETED"], barName))
                 HB:RefreshOptions()
+            end,
+        },
+    }
+end
+
+------------------------------------------------------------------------
+-- Arena Visibility Arguments
+------------------------------------------------------------------------
+
+function HB:BuildArenaVisibilityArgs(barName, barDB)
+    -- Migrate old data: ensure arenaVisibility exists
+    if not barDB.arenaVisibility then
+        barDB.arenaVisibility = "ALL"
+    end
+
+    return {
+        visDesc = {
+            type = "description",
+            name = L["ARENA_VIS_NOTE"] .. "\n",
+            order = 1,
+            fontSize = "medium",
+        },
+        visibilityMode = {
+            type = "select",
+            name = L["Visibility Mode"],
+            desc = L["VISIBILITY_MODE_DESC"],
+            order = 10,
+            width = "double",
+            values = {
+                ALL    = L["All Enemies"],
+                ARENA1 = L["Arena 1 Only"],
+                ARENA2 = L["Arena 2 Only"],
+                ARENA3 = L["Arena 3 Only"],
+            },
+            get = function() return barDB.arenaVisibility or "ALL" end,
+            set = function(_, val)
+                barDB.arenaVisibility = val
+                HB:UpdateBarSpells(barName)
+            end,
+        },
+        spacer1 = { type = "description", name = "\n", order = 20 },
+        duplicateSameSpecClass = {
+            type = "toggle",
+            name = L["Duplicate Same Spec/Class"],
+            desc = L["DUPLICATE_DESC"],
+            order = 30,
+            width = "full",
+            get = function() return barDB.duplicateSameSpecClass end,
+            set = function(_, val)
+                barDB.duplicateSameSpecClass = val
+                HB:UpdateBarSpells(barName)
             end,
         },
     }
@@ -483,12 +531,12 @@ function HB:BuildSpellArgs(barName, barDB)
                     local bucketName
 
                     if #specs == 0 then
-                        bucketName = "All Specs"
+                        bucketName = L["All Specs"]
                     elseif #specs == 1 then
                         local specInfo = MC.SpecByID[specs[1]]
-                        bucketName = (specInfo and specInfo.name) or "Unknown Spec"
+                        bucketName = (specInfo and specInfo.name) or L["Unknown Spec"]
                     else
-                        bucketName = "Multiple Specs"
+                        bucketName = L["Multiple Specs"]
                     end
 
                     if not specBuckets[bucketName] then
@@ -500,7 +548,7 @@ function HB:BuildSpellArgs(barName, barDB)
                 -- Enable Default / Disable All buttons
                 classArgs.enableDefault = {
                     type = "execute",
-                    name = "Enable default",
+                    name = L["Enable Default"],
                     order = 1,
                     width = "full",
                     func = function()
@@ -516,7 +564,7 @@ function HB:BuildSpellArgs(barName, barDB)
                 }
                 classArgs.disableAll = {
                     type = "execute",
-                    name = "Disable All",
+                    name = L["Disable All"],
                     order = 2,
                     width = "full",
                     func = function()
@@ -534,14 +582,14 @@ function HB:BuildSpellArgs(barName, barDB)
 
                 -- Spec groups and spell toggles
                 local spellOrder = 10
-                local specOrder = { "All Specs" }
+                local specOrder = { L["All Specs"] }
                 for _, spec in ipairs(classSpecs) do
                     specOrder[#specOrder + 1] = spec.name
                 end
-                if specBuckets["Unknown Spec"] then
-                    specOrder[#specOrder + 1] = "Unknown Spec"
+                if specBuckets[L["Unknown Spec"]] then
+                    specOrder[#specOrder + 1] = L["Unknown Spec"]
                 end
-                specOrder[#specOrder + 1] = "Multiple Specs"
+                specOrder[#specOrder + 1] = L["Multiple Specs"]
 
                 for _, specName in ipairs(specOrder) do
                     local bucket = specBuckets[specName]
@@ -562,19 +610,32 @@ function HB:BuildSpellArgs(barName, barDB)
 
                         for _, spell in ipairs(bucket) do
                             local spellInfo = self:GetSpellData(spell.spellID)
+                            local effectiveDuration = self:GetEffectiveDuration(spell)
                             local displayName = format(
                                 "|T%s:18:18|t %s  |cff888888(%ds)|r",
                                 tostring(spellInfo.icon),
                                 spellInfo.name,
-                                spell.duration
+                                effectiveDuration
                             )
 
                             local desc = format(
-                                "Category: %s\nSpell ID: %d\nCharges: %d",
+                                "%s: %s\n%s: %d\n",
+                                L["Category"],
                                 spell.category or "Unknown",
-                                spell.spellID,
-                                spell.stack or 1
+                                L["Spell ID"],
+                                spell.spellID
                             )
+                            if spell.stack and spell.stack > 1 then
+                                desc = desc .. format("Charges: %d\n", spell.stack)
+                            end
+                            if effectiveDuration ~= spell.duration then
+                                desc = desc .. format(
+                                    "|cffFFAA00%s: %ds (default: %ds)|r",
+                                    L["Override Duration"],
+                                    effectiveDuration,
+                                    spell.duration
+                                )
+                            end
 
                             classArgs["spell_" .. spell.key] = {
                                 type = "toggle",
@@ -604,6 +665,421 @@ function HB:BuildSpellArgs(barName, barDB)
                     args = classArgs,
                 }
             end
+        end
+    end
+
+    return args
+end
+
+------------------------------------------------------------------------
+-- =====================================================================
+-- Customize Tab: Duration Overrides + Custom Spells
+-- =====================================================================
+------------------------------------------------------------------------
+
+function HB:GetCustomizeOptions()
+    return {
+        type = "group",
+        name = L["Customize"],
+        order = 3,
+        childGroups = "tab",
+        args = {
+            overrides = {
+                type = "group",
+                name = L["Cooldown Overrides"],
+                order = 1,
+                childGroups = "tree",
+                args = self:BuildDurationOverrideArgs(),
+            },
+            customSpells = {
+                type = "group",
+                name = L["Custom Spells"],
+                order = 2,
+                args = self:BuildCustomSpellArgs(),
+            },
+        },
+    }
+end
+
+------------------------------------------------------------------------
+-- Duration Override Arguments (per class)
+------------------------------------------------------------------------
+
+function HB:BuildDurationOverrideArgs()
+    local MC = self.MC
+    local args = {}
+
+    args.desc = {
+        type = "description",
+        name = L["CD_OVERRIDE_DESC"] .. "\n",
+        order = 1,
+        fontSize = "medium",
+    }
+
+    for i, classID in ipairs(CLASS_ORDER) do
+        local classInfo = MC.Classes[classID]
+        if classInfo then
+            local classSpells = MC:GetByClass(classID)
+            if #classSpells > 0 then
+                local classArgs = {}
+
+                -- Build spec buckets (same as spell selection panel)
+                local specBuckets = {}
+                local classSpecs = {}
+                for _, spec in pairs(MC.Specs) do
+                    if spec.class == classID then
+                        classSpecs[#classSpecs + 1] = spec
+                    end
+                end
+                table.sort(classSpecs, function(a, b)
+                    return (a.name or "") < (b.name or "")
+                end)
+
+                for _, spell in ipairs(classSpells) do
+                    local specs = spell.specs or {}
+                    local bucketName
+                    if #specs == 0 then
+                        bucketName = L["All Specs"]
+                    elseif #specs == 1 then
+                        local specInfo = MC.SpecByID[specs[1]]
+                        bucketName = (specInfo and specInfo.name) or L["Unknown Spec"]
+                    else
+                        bucketName = L["Multiple Specs"]
+                    end
+                    if not specBuckets[bucketName] then
+                        specBuckets[bucketName] = {}
+                    end
+                    specBuckets[bucketName][#specBuckets[bucketName] + 1] = spell
+                end
+
+                -- Determine spec display order
+                local specOrder = { L["All Specs"] }
+                for _, spec in ipairs(classSpecs) do
+                    specOrder[#specOrder + 1] = spec.name
+                end
+                if specBuckets[L["Unknown Spec"]] then
+                    specOrder[#specOrder + 1] = L["Unknown Spec"]
+                end
+                specOrder[#specOrder + 1] = L["Multiple Specs"]
+
+                local itemOrder = 1
+                for _, specName in ipairs(specOrder) do
+                    local bucket = specBuckets[specName]
+                    if bucket and #bucket > 0 then
+                        table.sort(bucket, function(a, b)
+                            local an = (self:GetSpellData(a.spellID).name or "")
+                            local bn = (self:GetSpellData(b.spellID).name or "")
+                            if an ~= bn then return an < bn end
+                            return a.key < b.key
+                        end)
+
+                        classArgs["header_" .. specName:gsub("%s", "_")] = {
+                            type = "header",
+                            name = specName,
+                            order = itemOrder,
+                        }
+                        itemOrder = itemOrder + 1
+
+                        for _, spell in ipairs(bucket) do
+                            local spellInfo = self:GetSpellData(spell.spellID)
+                            local isOverridden = HB.db.profile.durationOverrides[spell.key] ~= nil
+                            local displayName = format(
+                                "|T%s:16:16|t %s",
+                                tostring(spellInfo.icon),
+                                spellInfo.name
+                            )
+
+                            -- Checkbox: toggle override on/off
+                            classArgs["toggle_" .. spell.key] = {
+                                type = "toggle",
+                                name = displayName,
+                                desc = format(
+                                    "%s: %ds  |  %s: %d",
+                                    L["Default Duration"], spell.duration,
+                                    L["Spell ID"], spell.spellID
+                                ),
+                                order = itemOrder,
+                                width = 1.2,
+                                get = function()
+                                    return HB.db.profile.durationOverrides[spell.key] ~= nil
+                                end,
+                                set = function(_, val)
+                                    if val then
+                                        HB.db.profile.durationOverrides[spell.key] = spell.duration
+                                    else
+                                        HB.db.profile.durationOverrides[spell.key] = nil
+                                    end
+                                    HB:UpdateAllBars()
+                                    HB:RefreshOptions()
+                                end,
+                            }
+
+                            -- Slider: only shown when override is active
+                            if isOverridden then
+                                classArgs["slider_" .. spell.key] = {
+                                    type = "range",
+                                    name = "",
+                                    desc = format("%s: %ds", L["Default Duration"], spell.duration),
+                                    order = itemOrder + 0.5,
+                                    width = 1.2,
+                                    min = 1, max = 600, step = 1, bigStep = 5,
+                                    get = function()
+                                        return HB.db.profile.durationOverrides[spell.key] or spell.duration
+                                    end,
+                                    set = function(_, val)
+                                        HB.db.profile.durationOverrides[spell.key] = val
+                                        HB:UpdateAllBars()
+                                    end,
+                                }
+                            end
+
+                            itemOrder = itemOrder + 1
+                        end
+                    end
+                end
+
+                local colorHex = classInfo.color
+                args["class_" .. classID] = {
+                    type = "group",
+                    name = format("|cff%s%s|r", colorHex, classInfo.name),
+                    order = i + 1,
+                    args = classArgs,
+                }
+            end
+        end
+    end
+
+    return args
+end
+
+------------------------------------------------------------------------
+-- Custom Spell Arguments
+------------------------------------------------------------------------
+
+function HB:BuildCustomSpellArgs()
+    local MC = self.MC
+    local args = {}
+
+    args.desc = {
+        type = "description",
+        name = L["CUSTOM_SPELLS_DESC"] .. "\n",
+        order = 1,
+        fontSize = "medium",
+    }
+
+    -- Build class values for dropdown
+    local classValues = {}
+    for _, classID in ipairs(CLASS_ORDER) do
+        local classInfo = MC.Classes[classID]
+        if classInfo then
+            classValues[classID] = classInfo.name
+        end
+    end
+
+    -- Build spec values filtered by the currently selected class
+    local specValues = { [0] = L["All Specs"] .. " (" .. L["Class Ability"] .. ")" }
+    for _, spec in pairs(MC.Specs) do
+        if spec.class == customSpellForm.class then
+            specValues[spec.id] = spec.name
+        end
+    end
+
+    -- Build category values for dropdown
+    local categoryValues = {}
+    for catKey, catName in pairs(MC.Category) do
+        categoryValues[catName] = catName
+    end
+
+    -- ---- Add Custom Spell form ----
+    args.addHeader = {
+        type = "header",
+        name = L["Add Custom Spell"],
+        order = 2,
+    }
+    args.spellID = {
+        type = "input",
+        name = L["Spell ID"],
+        desc = L["SPELL_ID_DESC"],
+        order = 3,
+        width = "normal",
+        get = function() return customSpellForm.spellID end,
+        set = function(_, val)
+            customSpellForm.spellID = val
+            HB:RefreshOptions()
+        end,
+    }
+
+    -- Preview: show spell name + icon when a valid spell ID is entered
+    local previewID = tonumber(customSpellForm.spellID)
+    if previewID and previewID > 0 then
+        local previewInfo = self:GetSpellData(previewID)
+        args.preview = {
+            type = "description",
+            name = format(
+                "|T%s:20:20|t  |cffffffff%s|r",
+                tostring(previewInfo.icon),
+                previewInfo.name
+            ),
+            order = 3.5,
+            fontSize = "medium",
+        }
+    end
+
+    args.duration = {
+        type = "range",
+        name = L["Cooldown (seconds)"],
+        desc = L["CD_SECONDS_DESC"],
+        order = 4,
+        min = 1, max = 600, step = 1, bigStep = 5,
+        get = function() return customSpellForm.duration end,
+        set = function(_, val) customSpellForm.duration = val end,
+    }
+    args.classSelect = {
+        type = "select",
+        name = L["Class"],
+        desc = L["CLASS_DESC"],
+        order = 5,
+        values = classValues,
+        get = function() return customSpellForm.class end,
+        set = function(_, val)
+            customSpellForm.class = val
+            customSpellForm.spec = 0  -- reset spec when class changes
+            HB:RefreshOptions()
+        end,
+    }
+    args.specSelect = {
+        type = "select",
+        name = L["Specialization"],
+        desc = L["SPEC_DESC"],
+        order = 6,
+        values = specValues,
+        get = function() return customSpellForm.spec end,
+        set = function(_, val) customSpellForm.spec = val end,
+    }
+    args.categorySelect = {
+        type = "select",
+        name = L["Category"],
+        desc = L["CATEGORY_DESC"],
+        order = 7,
+        values = categoryValues,
+        get = function() return customSpellForm.category end,
+        set = function(_, val) customSpellForm.category = val end,
+    }
+    args.addButton = {
+        type = "execute",
+        name = L["Add Custom Spell"],
+        order = 8,
+        func = function()
+            local spellID = tonumber(customSpellForm.spellID)
+            if not spellID or spellID <= 0 then
+                HB:Print(L["CUSTOM_INVALID_ID"])
+                return
+            end
+            if HB.db.profile.customSpells[spellID] then
+                HB:Print(L["CUSTOM_ALREADY_EXISTS"])
+                return
+            end
+            local specs = {}
+            if customSpellForm.spec ~= 0 then
+                specs = { customSpellForm.spec }
+            end
+            local key = HB:RegisterCustomSpell(
+                spellID,
+                customSpellForm.duration,
+                customSpellForm.class,
+                customSpellForm.category,
+                specs
+            )
+            local spellInfo = HB:GetSpellData(spellID)
+            HB:Print(format(L["CUSTOM_ADDED"], spellInfo.name, spellID))
+            -- Reset form
+            customSpellForm.spellID = ""
+            customSpellForm.duration = 120
+            customSpellForm.class = "WARRIOR"
+            customSpellForm.spec = 0
+            customSpellForm.category = "Utility"
+            HB:RefreshOptions()
+        end,
+    }
+
+    -- ---- List existing custom spells ----
+    args.customListHeader = {
+        type = "header",
+        name = L["Custom Spells"],
+        order = 10,
+    }
+
+    local customSpells = self.db.profile.customSpells or {}
+    local listOrder = 11
+
+    -- Sort by spellID for consistent display
+    local sortedIDs = {}
+    for spellID in pairs(customSpells) do
+        sortedIDs[#sortedIDs + 1] = spellID
+    end
+    table.sort(sortedIDs)
+
+    if #sortedIDs == 0 then
+        args.noCustom = {
+            type = "description",
+            name = "|cff888888" .. L["No custom spells added yet."] .. "|r\n",
+            order = listOrder,
+        }
+    else
+        for _, spellID in ipairs(sortedIDs) do
+            local data = customSpells[spellID]
+            local spellInfo = self:GetSpellData(spellID)
+            local classInfo = MC.Classes[data.class]
+            local colorHex = classInfo and classInfo.color or "FFFFFF"
+            local className = classInfo and classInfo.name or data.class
+
+            -- Resolve spec name
+            local specName = L["All Specs"]
+            local specs = data.specs or {}
+            if #specs == 1 then
+                local specInfo = MC.SpecByID[specs[1]]
+                specName = specInfo and specInfo.name or L["Unknown Spec"]
+            elseif #specs > 1 then
+                specName = L["Multiple Specs"]
+            end
+
+            local groupArgs = {}
+
+            groupArgs.info = {
+                type = "description",
+                name = format(
+                    "%s: %d  |  %s: %ds  |  %s: |cff%s%s|r  |  %s: %s  |  %s: %s",
+                    L["Spell ID"], spellID,
+                    L["Cooldown (seconds)"], data.duration,
+                    L["Class"], colorHex, className,
+                    L["Specialization"], specName,
+                    L["Category"], data.category or "Utility"
+                ),
+                order = 1,
+            }
+
+            groupArgs.remove = {
+                type = "execute",
+                name = "|cffff0000" .. L["Remove"] .. "|r",
+                order = 2,
+                confirm = true,
+                confirmText = format(L["REMOVE_CUSTOM_CONFIRM"], spellInfo.name),
+                func = function()
+                    HB:RemoveCustomSpell(spellID)
+                    HB:Print(format(L["CUSTOM_REMOVED"], spellInfo.name))
+                    HB:UpdateAllBars()
+                    HB:RefreshOptions()
+                end,
+            }
+
+            args["custom_" .. spellID] = {
+                type = "group",
+                name = format("|T%s:16:16|t %s", tostring(spellInfo.icon), spellInfo.name),
+                order = listOrder,
+                inline = true,
+                args = groupArgs,
+            }
+            listOrder = listOrder + 1
         end
     end
 

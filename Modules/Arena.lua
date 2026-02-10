@@ -28,6 +28,7 @@ function HB:OnPlayerEnteringWorld()
         self.enemySpecsByClass = {}
         self.enemyClassCounts = {}
         self.enemySpecCountsByClass = {}
+        self.arenaSlotClasses = {}
         self:ResetAllCooldowns()
         self:DetectArenaOpponents()
     elseif wasInArena then
@@ -36,6 +37,7 @@ function HB:OnPlayerEnteringWorld()
         self.enemySpecsByClass = {}
         self.enemyClassCounts = {}
         self.enemySpecCountsByClass = {}
+        self.arenaSlotClasses = {}
     end
 
     self:UpdateAllBars()
@@ -63,6 +65,7 @@ function HB:OnArenaPrepOpponentSpecs()
         self.enemySpecsByClass = {}
         self.enemyClassCounts = {}
         self.enemySpecCountsByClass = {}
+        self.arenaSlotClasses = {}
     end
     
     self:DetectArenaOpponents()
@@ -91,11 +94,15 @@ function HB:DetectArenaOpponents()
     self.enemySpecsByClass = {}
     self.enemyClassCounts = {}
     self.enemySpecCountsByClass = {}
+    self.arenaSlotClasses = {}
 
-    local function addEnemy(classFile, specID)
+    local function addEnemy(slotIndex, classFile, specID)
         if not classFile then return end
         self.enemyClasses[classFile] = true
         self.enemyClassCounts[classFile] = (self.enemyClassCounts[classFile] or 0) + 1
+        if slotIndex then
+            self.arenaSlotClasses[slotIndex] = classFile
+        end
         if specID and specID > 0 then
             local bucket = self.enemySpecsByClass[classFile]
             if not bucket then
@@ -127,12 +134,12 @@ function HB:DetectArenaOpponents()
             if specID > 0 then
                 -- GetSpecializationInfoByID returns: id, name, description, icon, role, classFile, className
                 local _, _, _, _, _, classFile = GetSpecializationInfoByID(specID)
-                addEnemy(classFile, specID)
+                addEnemy(i, classFile, specID)
             else
                 local unitID = "arena" .. i
                 if UnitExists(unitID) then
                     local _, classFile = UnitClass(unitID)
-                    addEnemy(classFile, nil)
+                    addEnemy(i, classFile, nil)
                 end
             end
         end
@@ -143,7 +150,7 @@ function HB:DetectArenaOpponents()
             local unitID = "arena" .. i
             if UnitExists(unitID) then
                 local _, classFile = UnitClass(unitID)
-                addEnemy(classFile, nil)
+                addEnemy(i, classFile, nil)
             end
         end
     end

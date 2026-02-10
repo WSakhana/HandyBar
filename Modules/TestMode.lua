@@ -20,7 +20,7 @@ end
 function HB:EnableTestMode(deferUpdate)
     self.runtime = self.runtime or {}
     self.runtime.testMode = true
-    self:Print("|cff00ff00Test Mode enabled.|r All bars and spells are now visible.")
+    self:Print(self.L["Test Mode enabled."])
 
     -- Show unlocked state during test mode for easier configuration
     if self.db.profile.locked then
@@ -41,7 +41,7 @@ function HB:DisableTestMode(silent, deferUpdate)
 
     self.runtime.testMode = false
     if not silent then
-        self:Print("|cffff0000Test Mode disabled.|r")
+        self:Print(self.L["Test Mode disabled."])
     end
 
     -- Restore lock state

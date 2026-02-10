@@ -2,7 +2,7 @@
 ## Title: HandyBar
 ## Notes: Manual cooldown tracking for PvP Arenas - A manual-first OmniBar alternative
 ## Author: HandyBar
-## Version: 1.0.0
+## Version: 1.1.0
 ## SavedVariables: HandyBarDB
 ## X-Category: PvP
 ## IconTexture: Interface\Icons\Spell_Nature_TimeStop
@@ -16,9 +16,14 @@ Libs\AceEvent-3.0\AceEvent-3.0.xml
 Libs\AceTimer-3.0\AceTimer-3.0.xml
 Libs\AceDB-3.0\AceDB-3.0.xml
 Libs\AceDBOptions-3.0\AceDBOptions-3.0.xml
+Libs\AceLocale-3.0\AceLocale-3.0.xml
 Libs\AceGUI-3.0\AceGUI-3.0.xml
 Libs\AceConfig-3.0\AceConfig-3.0.xml
 Libs\MajorCooldowns\MajorCooldowns.xml
+
+# Localization
+Locale\enUS.lua
+Locale\frFR.lua
 
 # Core
 Core.lua

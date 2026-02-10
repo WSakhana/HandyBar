@@ -153,7 +153,7 @@ function HB:CreateBar(barName)
     
     frame.titleFrame:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:AddLine("Click and drag to move", 1, 1, 1)
+        GameTooltip:AddLine(HB.L["Click and drag to move"], 1, 1, 1)
         GameTooltip:Show()
         frame.title:SetTextColor(1, 1, 0, 1)  -- Brighten on hover
     end)
@@ -228,9 +228,25 @@ function HB:GetVisibleSpells(barName)
     local enemySpecCountsByClass = self.enemySpecCountsByClass or {}
     local enemyClassCounts = self.enemyClassCounts or {}
     local duplicateEnabled = barDB.duplicateSameSpecClass
+    local arenaVis = barDB.arenaVisibility or "ALL"
 
     local function getMatchCount(spellData)
         local classFile = spellData.class
+
+        -- Arena visibility filtering: if a specific arena slot is selected,
+        -- only match if that slot's class matches this spell's class.
+        if arenaVis ~= "ALL" then
+            local slotIndex = tonumber(arenaVis:match("ARENA(%d)"))
+            if slotIndex then
+                local slotClass = self.arenaSlotClasses and self.arenaSlotClasses[slotIndex]
+                if not slotClass or slotClass ~= classFile then
+                    return 0
+                end
+                -- When targeting a specific slot, count is always 1
+                return 1
+            end
+        end
+
         if not self.enemyClasses[classFile] then
             return 0
         end
@@ -446,7 +462,9 @@ function HB:GetOrCreateButton(barFrame)
 
         local spellInfo = HB:GetSpellData(self.spellData.spellID)
         local MC = HB.MC
+        local L = HB.L
         local classInfo = MC.Classes[self.spellData.class]
+        local effectiveDuration = HB:GetEffectiveDuration(self.spellData)
 
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(spellInfo.name, 1, 1, 1)
@@ -458,19 +476,19 @@ function HB:GetOrCreateButton(barFrame)
             GameTooltip:AddLine(classInfo.name, r, g, b)
         end
 
-        GameTooltip:AddLine(format("Cooldown: %ds", self.spellData.duration), 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(format(L["Cooldown: %ds"], effectiveDuration), 0.8, 0.8, 0.8)
 
         if self.spellData.category then
-            GameTooltip:AddLine("Category: " .. self.spellData.category, 0.6, 0.6, 0.6)
+            GameTooltip:AddLine(format(L["Category: %s"], self.spellData.category), 0.6, 0.6, 0.6)
         end
 
         if self.maxCharges and self.maxCharges > 1 then
-            GameTooltip:AddLine(format("Charges: %d / %d", self.currentCharges, self.maxCharges), 0.8, 0.8, 0.8)
+            GameTooltip:AddLine(format(L["Charges: %d / %d"], self.currentCharges, self.maxCharges), 0.8, 0.8, 0.8)
         end
 
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("|cff00ff00Left-click:|r Start cooldown", 0.7, 0.7, 0.7)
-        GameTooltip:AddLine("|cffff0000Right-click:|r Reset cooldown", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(L["Left-click: Start cooldown"], 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(L["Right-click: Reset cooldown"], 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
 
@@ -743,7 +761,7 @@ end
 function HB:StartSpellCooldown(button)
     if not button.spellData then return end
 
-    local duration = button.spellData.duration
+    local duration = self:GetEffectiveDuration(button.spellData)
     if not duration or duration <= 0 then return end
 
     local barDB = self.db.profile.bars[button:GetParent().barName]

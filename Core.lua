@@ -16,6 +16,7 @@ ns.HB = HB
 
 -- Library references
 HB.MC = LibStub("MajorCooldowns")
+HB.L = LibStub("AceLocale-3.0"):GetLocale(addonName)
 
 ------------------------------------------------------------------------
 -- Spell Info Cache
@@ -60,6 +61,8 @@ local defaults = {
         bars = {},
         locked = false,
         debug = false,
+        durationOverrides = {},  -- [spellKey] = seconds (0 = use default)
+        customSpells = {},       -- [spellID] = { spellID, duration, class, category }
     },
 }
 
@@ -92,6 +95,9 @@ function HB:OnInitialize()
     if next(self.db.profile.bars) == nil then
         self:CreateDefaultBars()
     end
+
+    -- Load user-defined custom spells into MajorCooldowns registry
+    self:LoadCustomSpells()
 
     -- Setup configuration UI
     self:SetupOptions()
@@ -141,7 +147,7 @@ function HB:ResetConfiguration()
 
     self:RefreshConfig()
     self:RefreshOptions()
-    self:Print("Configuration reset to defaults.")
+    self:Print(self.L["Configuration reset to defaults."])
 end
 
 function HB:OnDisable()
@@ -155,21 +161,22 @@ end
 function HB:SlashCommand(input)
     input = (input or ""):trim():lower()
 
+    local L = self.L
     if input == "test" then
         self:ToggleTestMode()
     elseif input == "lock" then
         self:ToggleLock()
     elseif input == "reset" then
         self:ResetAllCooldowns()
-        self:Print("All cooldowns reset.")
+        self:Print(L["All cooldowns reset."])
     elseif input == "config" or input == "options" or input == "" then
         self:OpenOptions()
     else
-        self:Print("|cff00ff00HandyBar Commands:|r")
-        self:Print("  /hb          - Open configuration")
-        self:Print("  /hb test     - Toggle Test Mode")
-        self:Print("  /hb lock     - Toggle bar locking")
-        self:Print("  /hb reset    - Reset all cooldowns")
+        self:Print(L["HandyBar Commands:"])
+        self:Print(L["CMD_CONFIG"])
+        self:Print(L["CMD_TEST"])
+        self:Print(L["CMD_LOCK"])
+        self:Print(L["CMD_RESET"])
     end
 end
 
@@ -187,12 +194,13 @@ end
 ------------------------------------------------------------------------
 function HB:ToggleLock()
     self.db.profile.locked = not self.db.profile.locked
+    local L = self.L
     if self.db.profile.locked then
         self:LockBars()
-        self:Print("Bars |cffff0000locked|r.")
+        self:Print(L["Bars locked."])
     else
         self:UnlockBars()
-        self:Print("Bars |cff00ff00unlocked|r.")
+        self:Print(L["Bars unlocked."])
     end
 end
 
@@ -243,8 +251,84 @@ function HB:GetBarDefaults(name)
         showCooldownText = true,
         showIconBorder = true,
         duplicateSameSpecClass = true,
+        arenaVisibility = "ALL",  -- ALL, ARENA1, ARENA2, ARENA3
         maxIcons = 24,
         maxPerRow = 12,
         position = nil,
     }
+end
+
+------------------------------------------------------------------------
+-- Effective Spell Duration (with overrides)
+------------------------------------------------------------------------
+function HB:GetEffectiveDuration(spellData)
+    -- Check user override first
+    local override = self.db.profile.durationOverrides[spellData.key]
+    if override and override > 0 then
+        return override
+    end
+    return spellData.duration
+end
+
+------------------------------------------------------------------------
+-- Custom Spell Management
+------------------------------------------------------------------------
+function HB:RegisterCustomSpell(spellID, duration, classID, category, specs)
+    local MC = self.MC
+    local key = "custom_" .. spellID
+
+    -- Save to DB
+    self.db.profile.customSpells[spellID] = {
+        spellID = spellID,
+        duration = duration,
+        class = classID,
+        category = category or MC.Category.UTILITY,
+        specs = specs or {},
+    }
+
+    -- Register with MajorCooldowns if not already there
+    if not MC:GetByKey(key) then
+        MC:Register({
+            key = key,
+            spellID = spellID,
+            duration = duration,
+            class = classID,
+            specs = specs or {},
+            category = category or MC.Category.UTILITY,
+            defaultEnabled = false,
+            priority = MC.Priority.NORMAL,
+        }, MC.CooldownType.CLASS_ABILITY)
+    end
+
+    return key
+end
+
+function HB:RemoveCustomSpell(spellID)
+    self.db.profile.customSpells[spellID] = nil
+    -- Note: we can't truly unregister from MC, but removing from DB
+    -- and bars is sufficient since the spell won't be enabled anywhere.
+    for _, barDB in pairs(self.db.profile.bars) do
+        local key = "custom_" .. spellID
+        barDB.spells[key] = nil
+    end
+end
+
+function HB:LoadCustomSpells()
+    if not self.db.profile.customSpells then return end
+    local MC = self.MC
+    for spellID, data in pairs(self.db.profile.customSpells) do
+        local key = "custom_" .. spellID
+        if not MC:GetByKey(key) then
+            MC:Register({
+                key = key,
+                spellID = spellID,
+                duration = data.duration,
+                class = data.class,
+                specs = data.specs or {},
+                category = data.category or MC.Category.UTILITY,
+                defaultEnabled = false,
+                priority = MC.Priority.NORMAL,
+            }, MC.CooldownType.CLASS_ABILITY)
+        end
+    end
 end
