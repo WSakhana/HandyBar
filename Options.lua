@@ -179,9 +179,9 @@ function HB:GetGeneralOptions()
                 set = function(_, val)
                     HB.db.profile.debug = val
                     if val then
-                        print(L["Debug mode enabled."])
+                        HB:Print(L["Debug mode enabled."])
                     else
-                        print(L["Debug mode disabled."])
+                        HB:Print(L["Debug mode disabled."])
                     end
                 end,
             },

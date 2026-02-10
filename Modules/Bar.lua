@@ -39,7 +39,7 @@ function HB:CreateAllBars()
         for barName, barDB in pairs(self.db.profile.bars) do
             if barDB.enabled then count = count + 1 end
         end
-        print("|cFF00FF00[HandyBar]|r CreateAllBars: Creating " .. count .. " enabled bars")
+        self:Print("|cFF00FF00[HandyBar]|r CreateAllBars: Creating " .. count .. " enabled bars")
     end
     
     for barName, barDB in pairs(self.db.profile.bars) do
@@ -219,7 +219,7 @@ function HB:GetVisibleSpells(barName)
     if debugEnabled then
         local spellCount = 0
         for _ in pairs(barDB.spells) do spellCount = spellCount + 1 end
-        print("|cFF00FF00[HandyBar]|r GetVisibleSpells:", barName,
+        self:Print("|cFF00FF00[HandyBar]|r GetVisibleSpells:", barName,
               "assigned=" .. tostring(spellCount),
               "testMode=" .. tostring(isTestMode),
               "inArena=" .. tostring(self.inArena))
@@ -298,7 +298,7 @@ function HB:GetVisibleSpells(barName)
     end
     
     if debugEnabled then
-        print("|cFF00FF00[HandyBar]|r   Visible spells:", #visibleSpells)
+        self:Print("|cFF00FF00[HandyBar]|r   Visible spells:", #visibleSpells)
     end
 
     -- Sort: class (preferred order) -> priority (desc) -> localized spell name -> key
@@ -329,7 +329,7 @@ function HB:GetVisibleSpells(barName)
         end
         visibleSpells = limited
         if debugEnabled then
-            print("|cFF00FF00[HandyBar]|r   Limited to maxIcons=", maxIcons)
+            self:Print("|cFF00FF00[HandyBar]|r   Limited to maxIcons=", maxIcons)
         end
     end
 
@@ -663,7 +663,7 @@ function HB:UpdateBarSpells(barName)
     local frame = self.barFrames[barName]
     if not frame then 
         if self.db.profile.debug then
-            print("|cFF00FF00[HandyBar]|r UpdateBarSpells: No frame found for bar:", barName)
+            self:Print("|cFF00FF00[HandyBar]|r UpdateBarSpells: No frame found for bar:", barName)
         end
         return 
     end
@@ -671,7 +671,7 @@ function HB:UpdateBarSpells(barName)
     local barDB = self.db.profile.bars[barName]
     if not barDB then 
         if self.db.profile.debug then
-            print("|cFF00FF00[HandyBar]|r UpdateBarSpells: No barDB found for:", barName)
+            self:Print("|cFF00FF00[HandyBar]|r UpdateBarSpells: No barDB found for:", barName)
         end
         return 
     end
@@ -790,7 +790,7 @@ function HB:UpdateBarVisibility(barName)
     if not barDB or not barDB.enabled then
         frame:Hide()
         if self.db.profile.debug then
-            print("|cFF00FF00[HandyBar]|r UpdateBarVisibility:", barName, "HIDDEN (not enabled)")
+            self:Print("|cFF00FF00[HandyBar]|r UpdateBarVisibility:", barName, "HIDDEN (not enabled)")
         end
         return
     end
@@ -799,7 +799,7 @@ function HB:UpdateBarVisibility(barName)
     local shouldShow = hasButtons and (self:IsTestMode() or self.inArena)
     
     if self.db.profile.debug then
-        print("|cFF00FF00[HandyBar]|r UpdateBarVisibility:", barName, 
+        self:Print("|cFF00FF00[HandyBar]|r UpdateBarVisibility:", barName, 
               "hasButtons=" .. tostring(hasButtons) .. " (#" .. #frame.activeButtons .. ")",
               "testMode=" .. tostring(self:IsTestMode()),
               "inArena=" .. tostring(self.inArena),
@@ -817,7 +817,7 @@ function HB:UpdateAllBars()
     if self.db.profile.debug then
         local count = 0
         for _ in pairs(self.barFrames) do count = count + 1 end
-        print("|cFF00FF00[HandyBar]|r UpdateAllBars: Found " .. count .. " bar frames")
+        self:Print("|cFF00FF00[HandyBar]|r UpdateAllBars: Found " .. count .. " bar frames")
     end
     
     for barName in pairs(self.barFrames) do

@@ -114,6 +114,7 @@ function HB:OnEnable()
 
     -- Register arena-related events
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    self:RegisterEvent("ZONE_CHANGED_NEW_AREA", "OnZoneChanged")
     self:RegisterEvent("ARENA_PREP_OPPONENT_SPECIALIZATIONS", "OnArenaPrepOpponentSpecs")
     self:RegisterEvent("ARENA_OPPONENT_UPDATE", "OnArenaOpponentUpdate")
 

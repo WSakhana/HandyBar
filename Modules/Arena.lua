@@ -19,7 +19,7 @@ function HB:OnPlayerEnteringWorld()
     self.inArena = (instanceType == "arena")
 
     if self.db.profile.debug then
-        print("|cFF00FF00[HandyBar]|r PLAYER_ENTERING_WORLD: instanceType=", instanceType, "inArena=", tostring(self.inArena))
+        self:Print("|cFF00FF00[HandyBar]|r PLAYER_ENTERING_WORLD: instanceType=", instanceType, "inArena=", tostring(self.inArena))
     end
 
     if self.inArena then
@@ -50,7 +50,7 @@ function HB:OnArenaPrepOpponentSpecs()
     local isInArena = (instanceType == "arena")
     
     if self.db.profile.debug then
-        print("|cFF00FF00[HandyBar]|r ARENA_PREP_OPPONENT_SPECIALIZATIONS: instanceType=", instanceType)
+        self:Print("|cFF00FF00[HandyBar]|r ARENA_PREP_OPPONENT_SPECIALIZATIONS: instanceType=", instanceType)
     end
     
     if not isInArena then return end
@@ -77,7 +77,7 @@ function HB:OnArenaOpponentUpdate(event, unitID, updateType)
     if instanceType ~= "arena" then return end
     
     if self.db.profile.debug then
-        print("|cFF00FF00[HandyBar]|r ARENA_OPPONENT_UPDATE: unitID=", unitID, "updateType=", tostring(updateType))
+        self:Print("|cFF00FF00[HandyBar]|r ARENA_OPPONENT_UPDATE: unitID=", unitID, "updateType=", tostring(updateType))
     end
     
     self:DetectArenaOpponents()
@@ -125,7 +125,7 @@ function HB:DetectArenaOpponents()
     local numSpecs = GetNumArenaOpponentSpecs and GetNumArenaOpponentSpecs() or 0
     
     if self.db.profile.debug then
-        print("|cFF00FF00[HandyBar]|r DetectArenaOpponents: numSpecs =", numSpecs)
+        self:Print("|cFF00FF00[HandyBar]|r DetectArenaOpponents: numSpecs =", numSpecs)
     end
     
     if numSpecs > 0 then
@@ -162,9 +162,9 @@ function HB:DetectArenaOpponents()
         end
         table.sort(classes)
         if #classes > 0 then
-            print("|cFF00FF00[HandyBar]|r   Enemy classes: " .. table.concat(classes, ", "))
+            self:Print("|cFF00FF00[HandyBar]|r   Enemy classes: " .. table.concat(classes, ", "))
         else
-            print("|cFF00FF00[HandyBar]|r   Enemy classes: (none yet)")
+            self:Print("|cFF00FF00[HandyBar]|r   Enemy classes: (none yet)")
         end
 
         local specSummary = {}
@@ -181,9 +181,9 @@ function HB:DetectArenaOpponents()
         end
         table.sort(specSummary)
         if #specSummary > 0 then
-            print("|cFF00FF00[HandyBar]|r   Enemy specs: " .. table.concat(specSummary, "; "))
+            self:Print("|cFF00FF00[HandyBar]|r   Enemy specs: " .. table.concat(specSummary, "; "))
         else
-            print("|cFF00FF00[HandyBar]|r   Enemy specs: (none yet)")
+            self:Print("|cFF00FF00[HandyBar]|r   Enemy specs: (none yet)")
         end
 
         local countSummary = {}
@@ -192,7 +192,7 @@ function HB:DetectArenaOpponents()
         end
         table.sort(countSummary)
         if #countSummary > 0 then
-            print("|cFF00FF00[HandyBar]|r   Enemy class counts: " .. table.concat(countSummary, ", "))
+            self:Print("|cFF00FF00[HandyBar]|r   Enemy class counts: " .. table.concat(countSummary, ", "))
         end
     end
 end

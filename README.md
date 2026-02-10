@@ -4,7 +4,7 @@ HandyBar est un addon **de suivi manuel des cooldowns** pour les arènes PvP sur
 
 Contrairement aux trackers “automatiques”, HandyBar vous demande d’**indiquer vous‑même** qu’un sort ennemi a été utilisé : vous **cliquez** sur l’icône du sort quand vous le voyez partir, et l’addon lance le décompte.
 
-- Version indiquée par l’addon : `1.1.0`
+- Version indiquée par l’addon : `1.1.1`
 - Variables sauvegardées : `HandyBarDB`
 - Dépendances embarquées : Ace3 + MajorCooldowns (inclus dans le dossier `Libs/`)
 
