@@ -1,4 +1,4 @@
-## Interface: 120000
+## Interface: 120000, 120001
 ## Title: HandyBar
 ## Notes: Manual cooldown tracking for PvP Arenas - a manual-first OmniBar alternative
 ## Notes-frFR: Suivi manuel des cooldowns en arène PvP - une alternative "manual-first" à OmniBar
