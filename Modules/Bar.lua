@@ -458,38 +458,109 @@ function HB:GetOrCreateButton(barFrame)
 
     -- Tooltip
     button:SetScript("OnEnter", function(self)
+        if HB.db and HB.db.profile and HB.db.profile.iconTooltips == false then
+            return
+        end
         if not self.spellData then return end
 
-        local spellInfo = HB:GetSpellData(self.spellData.spellID)
+        local spellID = self.spellData.spellID
         local MC = HB.MC
         local L = HB.L
         local classInfo = MC.Classes[self.spellData.class]
         local effectiveDuration = HB:GetEffectiveDuration(self.spellData)
+        local isOverridden = (effectiveDuration ~= self.spellData.duration)
 
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(spellInfo.name, 1, 1, 1)
-
-        if classInfo then
-            local r = tonumber(classInfo.color:sub(1,2), 16) / 255
-            local g = tonumber(classInfo.color:sub(3,4), 16) / 255
-            local b = tonumber(classInfo.color:sub(5,6), 16) / 255
-            GameTooltip:AddLine(classInfo.name, r, g, b)
+        local function getSpellDescription()
+            if C_Spell and C_Spell.GetSpellDescription then
+                return C_Spell.GetSpellDescription(spellID)
+            elseif GetSpellDescription then
+                return GetSpellDescription(spellID)
+            end
+            return nil
         end
 
-        GameTooltip:AddLine(format(L["Cooldown: %ds"], effectiveDuration), 0.8, 0.8, 0.8)
+        local function buildTooltip()
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:ClearLines()
 
-        if self.spellData.category then
-            GameTooltip:AddLine(format(L["Category: %s"], self.spellData.category), 0.6, 0.6, 0.6)
+            -- Request spell data so description is ready ASAP
+            if C_Spell and C_Spell.RequestLoadSpellData then
+                C_Spell.RequestLoadSpellData(spellID)
+            end
+
+            -- Spell name + cooldown as title (with icon inline)
+            local spellInfo = HB:GetSpellData(spellID)
+            local cdText
+            if isOverridden then
+                cdText = format("|cffFFAA00%ds|r |cff888888(%ds)|r", effectiveDuration, self.spellData.duration)
+            else
+                cdText = format("%ds", effectiveDuration)
+            end
+            local title = format("|T%s:18:18|t %s (%s)", tostring(spellInfo.icon), spellInfo.name, cdText)
+            GameTooltip:AddLine(title, 1, 1, 1)
+
+             -- Class + Spec line (colored by class)
+            if classInfo then
+                local r = tonumber(classInfo.color:sub(1, 2), 16) / 255
+                local g = tonumber(classInfo.color:sub(3, 4), 16) / 255
+                local b = tonumber(classInfo.color:sub(5, 6), 16) / 255
+
+                local specStr = ""
+                local specs = self.spellData.specs or {}
+                if #specs == 0 then
+                    specStr = L["All Specs"]
+                elseif #specs == 1 then
+                    local specInfo = MC.SpecByID[specs[1]]
+                    specStr = specInfo and specInfo.name or L["Unknown Spec"]
+                else
+                    local names = {}
+                    for _, sid in ipairs(specs) do
+                        local specInfo = MC.SpecByID[sid]
+                        names[#names + 1] = specInfo and specInfo.name or tostring(sid)
+                    end
+                    specStr = table.concat(names, ", ")
+                end
+
+                GameTooltip:AddLine(classInfo.name .. " - " .. specStr, r, g, b)
+            end
+
+            -- Spell description from WoW API (text only, no Blizzard cooldown info)
+            local desc = getSpellDescription()
+            if desc and desc ~= "" then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine(desc, 1, 1, 1, true)
+            end
+
+            
+            
+            -- Active cooldown remaining
+            if self.cooldownEndTime then
+                local remaining = self.cooldownEndTime - GetTime()
+                if remaining > 0 then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine(format(L["TOOLTIP_REMAINING"], FormatCooldownText(remaining)), 1, 0.3, 0.3)
+                end
+            end
+
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(L["Left-click: Start cooldown"], 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(L["Right-click: Reset cooldown"], 0.7, 0.7, 0.7)
+            GameTooltip:Show()
         end
 
-        if self.maxCharges and self.maxCharges > 1 then
-            GameTooltip:AddLine(format(L["Charges: %d / %d"], self.currentCharges, self.maxCharges), 0.8, 0.8, 0.8)
-        end
+        buildTooltip()
 
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(L["Left-click: Start cooldown"], 0.7, 0.7, 0.7)
-        GameTooltip:AddLine(L["Right-click: Reset cooldown"], 0.7, 0.7, 0.7)
-        GameTooltip:Show()
+        -- If the spell description isn't loaded yet, refresh once shortly after.
+        if C_Timer and C_Timer.After then
+            local descNow = getSpellDescription()
+            if not descNow or descNow == "" then
+                C_Timer.After(0.10, function()
+                    if GameTooltip:GetOwner() ~= self then return end
+                    if HB.db and HB.db.profile and HB.db.profile.iconTooltips == false then return end
+                    buildTooltip()
+                end)
+            end
+        end
     end)
 
     button:SetScript("OnLeave", function()

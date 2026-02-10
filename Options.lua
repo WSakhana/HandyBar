@@ -155,6 +155,20 @@ function HB:GetGeneralOptions()
                     end
                 end,
             },
+            iconTooltips = {
+                type = "toggle",
+                name = L["Icon Tooltips"],
+                desc = L["ICON_TOOLTIPS_DESC"],
+                order = 21,
+                width = "full",
+                get = function() return HB.db.profile.iconTooltips ~= false end,
+                set = function(_, val)
+                    HB.db.profile.iconTooltips = val
+                    if not val then
+                        GameTooltip:Hide()
+                    end
+                end,
+            },
             debug = {
                 type = "toggle",
                 name = L["Debug Mode"],
@@ -655,24 +669,8 @@ function HB:BuildSpellArgs(barName, barDB)
                                 effectiveDuration
                             )
 
-                            local desc = format(
-                                "%s: %s\n%s: %d\n",
-                                L["Category"],
-                                spell.category or "Unknown",
-                                L["Spell ID"],
-                                spell.spellID
-                            )
-                            if spell.stack and spell.stack > 1 then
-                                desc = desc .. format("Charges: %d\n", spell.stack)
-                            end
-                            if effectiveDuration ~= spell.duration then
-                                desc = desc .. format(
-                                    "|cffFFAA00%s: %ds (default: %ds)|r",
-                                    L["Override Duration"],
-                                    effectiveDuration,
-                                    spell.duration
-                                )
-                            end
+                            -- Build rich tooltip desc using shared helper
+                            local desc = self:BuildSpellTooltipDesc(spell)
 
                             classArgs["spell_" .. spell.key] = {
                                 type = "toggle",
@@ -826,15 +824,14 @@ function HB:BuildDurationOverrideArgs()
                                 spellInfo.name
                             )
 
+                            -- Build rich tooltip desc using shared helper
+                            local overrideDesc = self:BuildSpellTooltipDesc(spell)
+
                             -- Checkbox: toggle override on/off
                             classArgs["toggle_" .. spell.key] = {
                                 type = "toggle",
                                 name = displayName,
-                                desc = format(
-                                    "%s: %ds  |  %s: %d",
-                                    L["Default Duration"], spell.duration,
-                                    L["Spell ID"], spell.spellID
-                                ),
+                                desc = overrideDesc,
                                 order = itemOrder,
                                 width = 1.2,
                                 get = function()
@@ -856,7 +853,7 @@ function HB:BuildDurationOverrideArgs()
                                 classArgs["slider_" .. spell.key] = {
                                     type = "range",
                                     name = "",
-                                    desc = format("%s: %ds", L["Default Duration"], spell.duration),
+                                    desc = format("%s: %ds\n\n%s", L["Default Duration"], spell.duration, overrideDesc),
                                     order = itemOrder + 0.5,
                                     width = 1.2,
                                     min = 1, max = 600, step = 1, bigStep = 5,
@@ -948,15 +945,24 @@ function HB:BuildCustomSpellArgs()
 
             local groupArgs = {}
 
-            groupArgs.info = {
-                type = "description",
-                name = format(
+            -- Build rich info description using shared tooltip helper
+            local spellRegistered = MC:GetByKey("custom_" .. spellID)
+            local infoText
+            if spellRegistered then
+                infoText = self:BuildSpellTooltipDesc(spellRegistered)
+            else
+                infoText = format(
                     "%s: %ds  |  |cff%s%s|r / %s  |  %s: %s",
                     L["Cooldown (seconds)"], data.duration,
                     colorHex, className,
                     specName,
                     L["Category"], data.category or "Utility"
-                ),
+                )
+            end
+
+            groupArgs.info = {
+                type = "description",
+                name = infoText,
                 order = 1,
             }
 
@@ -990,7 +996,8 @@ function HB:BuildCustomSpellArgs()
 
             args["custom_" .. spellID] = {
                 type = "group",
-                name = format("|T%s:16:16|t %s", tostring(spellInfo.icon), spellInfo.name),
+                name = format("|T%s:16:16|t %s  |cff888888(%ds)|r", tostring(spellInfo.icon), spellInfo.name, data.duration),
+                desc = infoText,
                 order = listOrder,
                 inline = true,
                 args = groupArgs,
@@ -1066,6 +1073,20 @@ function HB:BuildCustomSpellArgs()
         if isEditing then
             previewText = previewText .. "  |cff00ccff[" .. L["Editing"] .. "]|r"
         end
+
+        -- Add spell description if available
+        local spellDesc = nil
+        if C_Spell and C_Spell.GetSpellDescription then
+            spellDesc = C_Spell.GetSpellDescription(previewID)
+        elseif GetSpellDescription then
+            spellDesc = GetSpellDescription(previewID)
+        end
+        if spellDesc and spellDesc ~= "" then
+            -- Strip color escape codes for clean display
+            spellDesc = spellDesc:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            previewText = previewText .. "\n\n|cffcccccc" .. spellDesc .. "|r"
+        end
+
         args.preview = {
             type = "description",
             name = previewText,

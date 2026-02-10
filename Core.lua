@@ -61,6 +61,7 @@ local defaults = {
         bars = {},
         locked = false,
         debug = false,
+        iconTooltips = true,
         durationOverrides = {},  -- [spellKey] = seconds (0 = use default)
         customSpells = {},       -- [spellID] = { spellID, duration, class, category }
     },
@@ -268,6 +269,58 @@ function HB:GetEffectiveDuration(spellData)
         return override
     end
     return spellData.duration
+end
+
+------------------------------------------------------------------------
+-- Shared Tooltip Builder (for AceConfig desc fields)
+------------------------------------------------------------------------
+
+--- Build a rich tooltip string for a spell, suitable for AceConfig desc.
+--- Includes: spell description, class/spec, category, cooldown, charges, override info.
+---@param spellData table  The spell entry from MajorCooldowns
+---@param opts table|nil   Optional overrides { showDescription=bool, showInstructions=bool }
+---@return string
+function HB:BuildSpellTooltipDesc(spellData, opts)
+    opts = opts or {}
+    local MC = self.MC
+    local L = self.L
+    local lines = {}
+    local spellInfo = self:GetSpellData(spellData.spellID)
+    local effectiveDuration = self:GetEffectiveDuration(spellData)
+
+    -- Spell description from WoW API
+    if opts.showDescription ~= false then
+        local desc = nil
+        if C_Spell and C_Spell.GetSpellDescription then
+            desc = C_Spell.GetSpellDescription(spellData.spellID)
+        elseif GetSpellDescription then
+            desc = GetSpellDescription(spellData.spellID)
+        end
+        if desc and desc ~= "" then
+            -- Strip color codes for clean display in AceConfig
+            desc = desc:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+            lines[#lines + 1] = desc
+            lines[#lines + 1] = ""
+        end
+    end
+
+    -- Category
+    if spellData.category then
+        lines[#lines + 1] = format(L["Category: %s"], spellData.category)
+    end
+
+    -- Cooldown duration (with override indicator)
+    local isOverridden = (effectiveDuration ~= spellData.duration)
+    if isOverridden then
+        lines[#lines + 1] = format(L["TOOLTIP_CD_OVERRIDE"], effectiveDuration, spellData.duration)
+    else
+        lines[#lines + 1] = format(L["Cooldown: %ds"], effectiveDuration)
+    end
+
+    -- Spell ID
+    lines[#lines + 1] = format("|cff888888%s: %d|r", L["Spell ID"], spellData.spellID)
+
+    return table.concat(lines, "\n")
 end
 
 ------------------------------------------------------------------------
