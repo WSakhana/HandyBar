@@ -1,9 +1,0 @@
-## Interface: 120000, 120001
-## Title: Lib: MajorCooldowns
-## Notes: Library providing major cooldown definitions for all WoW Retail classes and specs.
-## Author: Anahkas
-## Version: 2
-## LoadOnDemand: 1
-## X-Category: Library
-
-MajorCooldowns.xml

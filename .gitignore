@@ -1,0 +1,22 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.sln
+*.csproj
+*.vcxproj
+*.vcxproj.filters
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# GitHub
+.github/
+
+# Libraries
+Libs/
+libs/
