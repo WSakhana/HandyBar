@@ -2,6 +2,20 @@
 
 All notable changes for HandyBar are documented here.
 
+## 1.2.0 (2026-02-17)
+
+### Added
+
+- **Auto-Detect Cooldown**: New feature for custom spells that automatically detects cooldown duration from spell tooltips
+  - Click "Auto-Detect" button when adding custom spells to automatically extract cooldown information
+  - When entering a new Spell ID, HandyBar now attempts to auto-detect the cooldown duration automatically
+  - Uses the upgraded MajorCooldowns library's `GetCooldownFromTooltip` method
+
+### Changed
+
+- Updated MajorCooldowns library to version 2 with enhanced tooltip parsing capabilities
+- Improved Custom Spells UI with automatic cooldown detection
+
 ## 1.1.1 (2026-02-10)
 
 ### Changed

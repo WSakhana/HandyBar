@@ -161,6 +161,10 @@ L["Override Duration"] = "Durée modifiée"
 L["OVERRIDE_DURATION_DESC"] = "Durée de cooldown modifiée en secondes. 0 = utiliser la durée par défaut."
 L["Reset Override"] = "Réinitialiser"
 L["Select a class..."] = "Sélectionner une classe..."
+L["Auto-Detect"] = "Détecter"
+L["AUTO_DETECT_DESC"] = "Détecter automatiquement la durée du cooldown depuis l'infobulle du sort.\n\nCela utilise la bibliothèque MajorCooldowns pour analyser l'infobulle du sort et extraire l'information de cooldown."
+L["AUTO_DETECT_SUCCESS"] = "Cooldown auto-détecté pour |cff00ff00%s|r: |cffFFAA00%ds|r"
+L["AUTO_DETECT_FAIL"] = "Impossible de détecter le cooldown pour |cffff0000%s|r. Veuillez le saisir manuellement."
 
 ------------------------------------------------------------------------
 -- Tooltips

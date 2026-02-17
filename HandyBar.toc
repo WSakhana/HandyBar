@@ -3,7 +3,7 @@
 ## Notes: Manual cooldown tracking for PvP Arenas - a manual-first OmniBar alternative
 ## Notes-frFR: Suivi manuel des cooldowns en arène PvP - une alternative "manual-first" à OmniBar
 ## Author: HandyBar
-## Version: 1.1.1
+## Version: 1.2.0
 ## SavedVariables: HandyBarDB
 ## X-Category: PvP
 ## IconTexture: Interface\Icons\Spell_Nature_TimeStop

@@ -161,6 +161,10 @@ L["Override Duration"] = "Override Duration"
 L["OVERRIDE_DURATION_DESC"] = "Override cooldown duration in seconds. Set to 0 to use default."
 L["Reset Override"] = "Reset Override"
 L["Select a class..."] = "Select a class..."
+L["Auto-Detect"] = "Auto-Detect"
+L["AUTO_DETECT_DESC"] = "Automatically detect the cooldown duration from the spell tooltip.\n\nThis uses the MajorCooldowns library to parse the spell's tooltip and extract the cooldown information."
+L["AUTO_DETECT_SUCCESS"] = "Cooldown auto-detected for |cff00ff00%s|r: |cffFFAA00%ds|r"
+L["AUTO_DETECT_FAIL"] = "Could not auto-detect cooldown for |cffff0000%s|r. Please enter manually."
 
 ------------------------------------------------------------------------
 -- Tooltips

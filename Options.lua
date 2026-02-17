@@ -1055,6 +1055,13 @@ function HB:BuildCustomSpellArgs()
                 LoadCustomSpellIntoForm(id)
             else
                 customSpellForm.editing = false
+                -- Try to auto-detect cooldown for new spells
+                if id and id > 0 then
+                    local detectedCD = HB.MC:GetCooldownFromTooltip(id)
+                    if detectedCD and detectedCD > 0 then
+                        customSpellForm.duration = detectedCD
+                    end
+                end
             end
             HB:RefreshOptions()
         end,
@@ -1132,10 +1139,31 @@ function HB:BuildCustomSpellArgs()
         desc = L["CD_SECONDS_DESC"],
         order = 106,
         min = 1, max = 600, step = 1, bigStep = 5,
-        width = "double",
+        width = 1.5,
         get = function() return customSpellForm.duration end,
         set = function(_, val) customSpellForm.duration = val end,
     }
+    
+    -- Auto-detect cooldown button (only shown when a valid spell ID is entered)
+    if previewID and previewID > 0 then
+        args.autoDetect = {
+            type = "execute",
+            name = L["Auto-Detect"],
+            desc = L["AUTO_DETECT_DESC"],
+            order = 106.5,
+            width = 0.5,
+            func = function()
+                local detectedCD = MC:GetCooldownFromTooltip(previewID)
+                if detectedCD and detectedCD > 0 then
+                    customSpellForm.duration = detectedCD
+                    HB:Print(format(L["AUTO_DETECT_SUCCESS"], previewInfo.name, detectedCD))
+                else
+                    HB:Print(format(L["AUTO_DETECT_FAIL"], previewInfo.name))
+                end
+                HB:RefreshOptions()
+            end,
+        }
+    end
 
     -- Save / Add button
     args.saveButton = {

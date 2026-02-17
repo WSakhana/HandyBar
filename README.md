@@ -4,9 +4,9 @@ HandyBar est un addon **de suivi manuel des cooldowns** pour les arènes PvP sur
 
 Contrairement aux trackers “automatiques”, HandyBar vous demande d’**indiquer vous‑même** qu’un sort ennemi a été utilisé : vous **cliquez** sur l’icône du sort quand vous le voyez partir, et l’addon lance le décompte.
 
-- Version indiquée par l’addon : `1.1.1`
+- Version indiquée par l’addon : `1.2.0`
 - Variables sauvegardées : `HandyBarDB`
-- Dépendances embarquées : Ace3 + MajorCooldowns (inclus dans le dossier `Libs/`)
+- Dépendances embarquées : Ace3 + MajorCooldowns v2 (inclus dans le dossier `Libs/`)
 
 ---
 
@@ -141,6 +141,8 @@ Permet de modifier la durée par défaut d’un sort de MajorCooldowns.
 #### Custom Spells
 Ajoute des sorts absents de MajorCooldowns.
 - Champs : **Spell ID**, **Cooldown (seconds)**, **Class**, **Specialization**, **Category**
+- **Auto-Détection** : Cliquez sur le bouton "Auto-Detect" pour extraire automatiquement la durée du cooldown depuis l'infobulle du sort (fonctionnalité ajoutée en v1.2.0)
+- Lors de la saisie d'un ID de sort, HandyBar tentera automatiquement de détecter le cooldown
 - Les sorts custom sont enregistrés sous une clé `custom_<SpellID>`.
 - Ils deviennent ensuite sélectionnables dans la liste de sorts (onglet Bars → Spells).
 
