@@ -153,6 +153,19 @@ function HB:GetGeneralOptions()
                     end
                 end,
             },
+            showOnlyAutoTrackableSpells = {
+                type = "toggle",
+                name = L["Show Only Auto-Trackable Spells"],
+                desc = L["SHOW_ONLY_AUTOTRACK_DESC"],
+                order = 16,
+                width = "full",
+                get = function() return HB.db.profile.showOnlyAutoTrackableSpells == true end,
+                set = function(_, val)
+                    HB.db.profile.showOnlyAutoTrackableSpells = val or false
+                    HB:UpdateAllBars()
+                    HB:RefreshOptions()
+                end,
+            },
             locked = {
                 type = "toggle",
                 name = L["Lock Bars"],
@@ -555,6 +568,7 @@ function HB:BuildSpellArgs(barName, barDB)
     local MC = self.MC
     local args = {}
     local customSpells = self.db.profile.customSpells or {}
+    local onlyAutoTrackable = self.db.profile.showOnlyAutoTrackableSpells == true
 
     -- Ensure spells table exists
     if not barDB.spells then
@@ -567,11 +581,17 @@ function HB:BuildSpellArgs(barName, barDB)
             local classSpells = MC:GetByClass(classID)
             local filteredClassSpells = {}
             for _, spell in ipairs(classSpells) do
+                local includeSpell = true
+
                 if spell.key and spell.key:sub(1, 7) == "custom_" then
-                    if customSpells[spell.spellID] then
-                        filteredClassSpells[#filteredClassSpells + 1] = spell
-                    end
-                else
+                    includeSpell = customSpells[spell.spellID] ~= nil
+                end
+
+                if includeSpell and onlyAutoTrackable then
+                    includeSpell = HB:IsSpellAutoTrackable(spell)
+                end
+
+                if includeSpell then
                     filteredClassSpells[#filteredClassSpells + 1] = spell
                 end
             end

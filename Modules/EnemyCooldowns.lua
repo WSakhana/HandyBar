@@ -4,6 +4,9 @@
 ------------------------------------------------------------------------
 local addonName, ns = ...
 local HB = ns.HB
+local MC = HB.MC
+local AUTO_AURA = MC.AutoTrackAura
+local AUTO_EVIDENCE = MC.AutoTrackEvidence
 
 local AUTO_DEDUPE_WINDOW = 0.35
 local RULE_TOLERANCE = 0.5
@@ -13,9 +16,9 @@ local GENERIC_RULE_TOLERANCE = 1.25
 local GENERIC_RULE_EXTENSION_WINDOW = 4.0
 
 local AURA_FILTERS = {
-    { key = "BIG_DEFENSIVE", filter = "HELPFUL|BIG_DEFENSIVE" },
-    { key = "EXTERNAL_DEFENSIVE", filter = "HELPFUL|EXTERNAL_DEFENSIVE" },
-    { key = "IMPORTANT", filter = "HELPFUL|IMPORTANT" },
+    { key = AUTO_AURA.BIG_DEFENSIVE, filter = "HELPFUL|BIG_DEFENSIVE" },
+    { key = AUTO_AURA.EXTERNAL_DEFENSIVE, filter = "HELPFUL|EXTERNAL_DEFENSIVE" },
+    { key = AUTO_AURA.IMPORTANT, filter = "HELPFUL|IMPORTANT" },
 }
 
 local trackingFrame
@@ -29,179 +32,7 @@ local lastFeignDeathTime = {}
 local lastFeignDeathState = {}
 local candidateEvidenceScratch = {}
 
-local E_CAST = "Cast"
-local E_BUBBLE = { "Cast", "Debuff", "UnitFlags" }
-local E_SHIELD = { "Cast", "Shield" }
-local E_CAST_FLAGS = { "Cast", "UnitFlags" }
-
-local function ExpandRules(rows)
-    local rules = {}
-    for i = 1, #rows do
-        local row = rows[i]
-        rules[i] = {
-            SpellId = row[1],
-            BuffDuration = row[2],
-            BigDefensive = row[3],
-            ExternalDefensive = row[4],
-            Important = row[5],
-            RequiresEvidence = row[6],
-            CanCancelEarly = row[7],
-            MinDuration = row[8],
-        }
-    end
-    return rules
-end
-
-local AUTO_RULES = {
-    BySpec = {
-        [65] = ExpandRules({
-            { 31884, 12, false, false, true, E_CAST, nil, true },
-            { 642, 8, true, false, true, E_BUBBLE, true },
-            { 1022, 10, false, true, false, E_CAST, true },
-            { 6940, 12, false, true, false, E_CAST },
-        }),
-        [66] = ExpandRules({
-            { 31884, 25, false, false, true, E_CAST, nil, true },
-            { 642, 8, true, false, true, E_BUBBLE, true },
-            { 31850, 8, true, false, true, E_CAST },
-            { 86659, 8, true, false, false, E_CAST },
-            { 1022, 10, false, true, false, E_CAST, true },
-            { 6940, 12, false, true, false, E_CAST },
-        }),
-        [70] = ExpandRules({
-            { 31884, 24, false, false, true, E_CAST },
-            { 642, 8, true, false, true, E_BUBBLE, true },
-            { 1022, 10, false, true, false, E_CAST, true },
-            { 6940, 12, false, true, false, E_CAST },
-        }),
-        [62] = ExpandRules({
-            { 365350, 15, false, false, true, E_CAST, nil, true },
-        }),
-        [63] = ExpandRules({
-            { 190319, 10, false, false, true, E_CAST, nil, true },
-        }),
-        [71] = ExpandRules({
-            { 118038, 8, true, false, true, E_CAST },
-            { 107574, 20, false, false, true, E_CAST, nil, true },
-        }),
-        [72] = ExpandRules({
-            { 184364, 8, true, false, true, E_CAST },
-            { 184364, 11, true, false, true, E_CAST },
-            { 107574, 20, false, false, true, E_CAST, nil, true },
-        }),
-        [73] = ExpandRules({
-            { 871, 8, true, false, true, E_CAST },
-            { 107574, 20, false, false, true, E_CAST, nil, true },
-        }),
-        [250] = ExpandRules({
-            { 55233, 10, true, false, true, E_CAST },
-            { 55233, 12, true, false, true, E_CAST },
-            { 55233, 14, true, false, true, E_CAST },
-        }),
-        [251] = ExpandRules({
-            { 51271, 12, false, false, true, E_CAST, nil, true },
-        }),
-        [256] = ExpandRules({
-            { 33206, 8, false, true, false, E_CAST },
-        }),
-        [257] = ExpandRules({
-            { 47788, 10, false, true, false, E_CAST, true },
-            { 64843, 5, false, false, true, E_CAST, true },
-        }),
-        [258] = ExpandRules({
-            { 47585, 6, true, false, true, E_CAST, true },
-            { 228260, 20, false, false, true, E_CAST },
-        }),
-        [102] = ExpandRules({
-            { 102560, 20, false, false, true, E_CAST, nil, true },
-        }),
-        [103] = ExpandRules({
-            { 106951, 15, false, false, true, E_CAST, nil, true },
-            { 102543, 20, false, false, true, E_CAST },
-        }),
-        [104] = ExpandRules({
-            { 102558, 30, false, false, true, E_CAST },
-        }),
-        [105] = ExpandRules({
-            { 102342, 12, false, true, false, E_CAST },
-        }),
-        [268] = ExpandRules({
-            { 115203, 15, true, false, false, E_CAST },
-        }),
-        [270] = ExpandRules({
-            { 116849, 12, false, true, false, E_CAST, true },
-        }),
-        [577] = ExpandRules({
-            { 198589, 10, true, false, true, E_CAST },
-        }),
-        [581] = ExpandRules({
-            { 204021, 12, true, false, false, E_CAST, nil, true },
-        }),
-        [254] = ExpandRules({
-            { 288613, 15, false, false, true, E_CAST },
-            { 288613, 17, false, false, true, E_CAST },
-        }),
-        [261] = ExpandRules({
-            { 121471, 16, false, false, true, E_CAST },
-            { 121471, 18, false, false, true, E_CAST },
-            { 121471, 20, false, false, true, E_CAST },
-        }),
-        [1467] = ExpandRules({
-            { 375087, 18, false, false, true, E_CAST, nil, true },
-        }),
-        [1468] = ExpandRules({
-            { 357170, 8, false, true, false, E_CAST },
-        }),
-        [1473] = ExpandRules({
-            { 363916, 13.4, true, false, true, E_CAST, nil, true },
-        }),
-    },
-    ByClass = {
-        PALADIN = ExpandRules({
-            { 642, 8, true, false, true, E_BUBBLE, true },
-            { 1044, 8, false, false, true, E_CAST, true },
-            { 1022, 10, false, true, false, E_CAST, true },
-        }),
-        MAGE = ExpandRules({
-            { 45438, 10, true, false, true, E_BUBBLE, true },
-        }),
-        HUNTER = ExpandRules({
-            { 186265, 8, true, false, true, E_CAST_FLAGS, true },
-            { 264735, 6, true, false, true, E_CAST, nil, true },
-            { 264735, 8, true, false, true, E_CAST, nil, true },
-        }),
-        DRUID = ExpandRules({
-            { 22812, 8, true, false, true, E_CAST },
-            { 22812, 12, true, false, true, E_CAST },
-        }),
-        ROGUE = ExpandRules({
-            { 5277, 10, false, false, true, E_CAST },
-            { 31224, 5, true, false, false, E_CAST },
-        }),
-        DEATHKNIGHT = ExpandRules({
-            { 48707, 5, true, false, true, E_SHIELD, true },
-            { 48707, 7, true, false, true, E_SHIELD, true },
-            { 48792, 8, true, false, true, E_CAST },
-            { 48707, 5, false, false, true, E_SHIELD, true },
-            { 48707, 7, false, false, true, E_SHIELD, true },
-        }),
-        MONK = ExpandRules({
-            { 115203, 15, true, false, false, E_CAST },
-        }),
-        SHAMAN = ExpandRules({
-            { 108271, 12, true, false, true, E_CAST },
-        }),
-        WARLOCK = ExpandRules({
-            { 104773, 8, true, false, true, E_CAST },
-        }),
-        PRIEST = ExpandRules({
-            { 19236, 10, true, false, true, E_CAST },
-        }),
-        EVOKER = ExpandRules({
-            { 363916, 12, true, false, true, E_CAST, nil, true },
-        }),
-    },
-}
+local E_CAST = AUTO_EVIDENCE.CAST
 
 local function IsArenaUnit(unit)
     return type(unit) == "string" and unit:match("^arena%d+$") ~= nil
@@ -244,14 +75,14 @@ end
 
 local function FormatAuraTypes(auraTypes)
     local tags = {}
-    if auraTypes["BIG_DEFENSIVE"] then
-        tags[#tags + 1] = "BIG_DEFENSIVE"
+    if auraTypes[AUTO_AURA.BIG_DEFENSIVE] then
+        tags[#tags + 1] = AUTO_AURA.BIG_DEFENSIVE
     end
-    if auraTypes["EXTERNAL_DEFENSIVE"] then
-        tags[#tags + 1] = "EXTERNAL_DEFENSIVE"
+    if auraTypes[AUTO_AURA.EXTERNAL_DEFENSIVE] then
+        tags[#tags + 1] = AUTO_AURA.EXTERNAL_DEFENSIVE
     end
-    if auraTypes["IMPORTANT"] then
-        tags[#tags + 1] = "IMPORTANT"
+    if auraTypes[AUTO_AURA.IMPORTANT] then
+        tags[#tags + 1] = AUTO_AURA.IMPORTANT
     end
     return #tags > 0 and table.concat(tags, "+") or "none"
 end
@@ -262,20 +93,20 @@ local function FormatEvidence(evidence)
     end
 
     local tags = {}
-    if evidence.Cast then
-        tags[#tags + 1] = "Cast"
+    if evidence[AUTO_EVIDENCE.CAST] then
+        tags[#tags + 1] = AUTO_EVIDENCE.CAST
     end
-    if evidence.Debuff then
-        tags[#tags + 1] = "Debuff"
+    if evidence[AUTO_EVIDENCE.DEBUFF] then
+        tags[#tags + 1] = AUTO_EVIDENCE.DEBUFF
     end
-    if evidence.Shield then
-        tags[#tags + 1] = "Shield"
+    if evidence[AUTO_EVIDENCE.SHIELD] then
+        tags[#tags + 1] = AUTO_EVIDENCE.SHIELD
     end
-    if evidence.UnitFlags then
-        tags[#tags + 1] = "UnitFlags"
+    if evidence[AUTO_EVIDENCE.UNIT_FLAGS] then
+        tags[#tags + 1] = AUTO_EVIDENCE.UNIT_FLAGS
     end
-    if evidence.FeignDeath then
-        tags[#tags + 1] = "FeignDeath"
+    if evidence[AUTO_EVIDENCE.FEIGN_DEATH] then
+        tags[#tags + 1] = AUTO_EVIDENCE.FEIGN_DEATH
     end
 
     return #tags > 0 and table.concat(tags, "+") or "none"
@@ -328,54 +159,54 @@ local function BuildEvidenceSet(unit, detectionTime)
     local evidence
     if lastDebuffTime[unit] and math.abs(lastDebuffTime[unit] - detectionTime) <= EVIDENCE_TOLERANCE then
         evidence = evidence or {}
-        evidence.Debuff = true
+        evidence[AUTO_EVIDENCE.DEBUFF] = true
     end
     if lastShieldTime[unit] and math.abs(lastShieldTime[unit] - detectionTime) <= EVIDENCE_TOLERANCE then
         evidence = evidence or {}
-        evidence.Shield = true
+        evidence[AUTO_EVIDENCE.SHIELD] = true
     end
     if lastFeignDeathTime[unit] and math.abs(lastFeignDeathTime[unit] - detectionTime) <= CAST_WINDOW then
         evidence = evidence or {}
-        evidence.FeignDeath = true
+        evidence[AUTO_EVIDENCE.FEIGN_DEATH] = true
     elseif lastUnitFlagsTime[unit] and math.abs(lastUnitFlagsTime[unit] - detectionTime) <= CAST_WINDOW then
         evidence = evidence or {}
-        evidence.UnitFlags = true
+        evidence[AUTO_EVIDENCE.UNIT_FLAGS] = true
     end
     if lastCastTime[unit] and math.abs(lastCastTime[unit] - detectionTime) <= CAST_WINDOW then
         evidence = evidence or {}
-        evidence.Cast = true
+        evidence[AUTO_EVIDENCE.CAST] = true
     end
     return evidence
 end
 
 local function BuildAuraTypesSignature(auraTypes)
     local signature = ""
-    if auraTypes["BIG_DEFENSIVE"] then
+    if auraTypes[AUTO_AURA.BIG_DEFENSIVE] then
         signature = signature .. "B"
     end
-    if auraTypes["EXTERNAL_DEFENSIVE"] then
+    if auraTypes[AUTO_AURA.EXTERNAL_DEFENSIVE] then
         signature = signature .. "E"
     end
-    if auraTypes["IMPORTANT"] then
+    if auraTypes[AUTO_AURA.IMPORTANT] then
         signature = signature .. "I"
     end
     return signature
 end
 
 local function AuraTypeMatchesRule(auraTypes, rule)
-    if rule.BigDefensive == true and not auraTypes["BIG_DEFENSIVE"] then
+    if rule.BigDefensive == true and not auraTypes[AUTO_AURA.BIG_DEFENSIVE] then
         return false
     end
-    if rule.BigDefensive == false and auraTypes["BIG_DEFENSIVE"] then
+    if rule.BigDefensive == false and auraTypes[AUTO_AURA.BIG_DEFENSIVE] then
         return false
     end
-    if rule.ExternalDefensive == true and not auraTypes["EXTERNAL_DEFENSIVE"] then
+    if rule.ExternalDefensive == true and not auraTypes[AUTO_AURA.EXTERNAL_DEFENSIVE] then
         return false
     end
-    if rule.ExternalDefensive == false and auraTypes["EXTERNAL_DEFENSIVE"] then
+    if rule.ExternalDefensive == false and auraTypes[AUTO_AURA.EXTERNAL_DEFENSIVE] then
         return false
     end
-    if rule.Important == true and not auraTypes["IMPORTANT"] then
+    if rule.Important == true and not auraTypes[AUTO_AURA.IMPORTANT] then
         return false
     end
     return true
@@ -415,6 +246,37 @@ local function DurationMatchesRule(rule, measuredDuration)
     return math.abs(measuredDuration - rule.BuffDuration) <= RULE_TOLERANCE
 end
 
+local function GetEvidenceSpecificity(req)
+    if req == nil or req == false then
+        return 0
+    end
+    if type(req) == "string" then
+        return 1
+    end
+    if type(req) == "table" then
+        return #req
+    end
+    return 0
+end
+
+local function GetAuraSpecificity(rule)
+    local score = 0
+    if rule.BigDefensive ~= nil then
+        score = score + 1
+    end
+    if rule.ExternalDefensive ~= nil then
+        score = score + 1
+    end
+    if rule.Important ~= nil then
+        score = score + 1
+    end
+    return score
+end
+
+local function GetRuleDurationDistance(rule, measuredDuration)
+    return math.abs((rule and rule.BuffDuration or 0) - measuredDuration)
+end
+
 local function RuleMatchesTrackableSpell(rule, unit)
     local spellData = GetKnownSpellData(rule.SpellId)
     local slotIndex = GetArenaSlotFromUnit(unit)
@@ -447,27 +309,27 @@ local function GetGenericAuraScore(spellData, auraTypes)
 
     local C = HB.MC.Category
     if spellData.category == C.BURST or spellData.category == C.OFFENSIVE then
-        if auraTypes["IMPORTANT"] then
+        if auraTypes[AUTO_AURA.IMPORTANT] then
             return 0
         end
         return nil
     end
 
     if spellData.category == C.DEFENSIVE then
-        if auraTypes["BIG_DEFENSIVE"] then
+        if auraTypes[AUTO_AURA.BIG_DEFENSIVE] then
             return 0
         end
-        if auraTypes["IMPORTANT"] then
+        if auraTypes[AUTO_AURA.IMPORTANT] then
             return 0.4
         end
         return nil
     end
 
     if spellData.category == C.UTILITY then
-        if auraTypes["EXTERNAL_DEFENSIVE"] then
+        if auraTypes[AUTO_AURA.EXTERNAL_DEFENSIVE] then
             return 0
         end
-        if auraTypes["IMPORTANT"] then
+        if auraTypes[AUTO_AURA.IMPORTANT] then
             return 0.5
         end
         return nil
@@ -567,6 +429,11 @@ local function MatchRule(unit, auraTypes, measuredDuration, evidence)
         if not ruleList then
             return nil
         end
+        local bestRule
+        local bestEvidenceSpecificity
+        local bestAuraSpecificity
+        local bestDurationDistance
+        local ambiguous = false
         for i = 1, #ruleList do
             local rule = ruleList[i]
             if AuraTypeMatchesRule(auraTypes, rule)
@@ -574,14 +441,42 @@ local function MatchRule(unit, auraTypes, measuredDuration, evidence)
                 and DurationMatchesRule(rule, measuredDuration)
                 and RuleMatchesTrackableSpell(rule, unit)
             then
-                return rule
+                local evidenceSpecificity = GetEvidenceSpecificity(rule.RequiresEvidence)
+                local auraSpecificity = GetAuraSpecificity(rule)
+                local durationDistance = GetRuleDurationDistance(rule, measuredDuration)
+                local isBetter = not bestRule
+                    or evidenceSpecificity > bestEvidenceSpecificity
+                    or (evidenceSpecificity == bestEvidenceSpecificity and auraSpecificity > bestAuraSpecificity)
+                    or (evidenceSpecificity == bestEvidenceSpecificity
+                        and auraSpecificity == bestAuraSpecificity
+                        and durationDistance < bestDurationDistance)
+
+                if isBetter then
+                    bestRule = rule
+                    bestEvidenceSpecificity = evidenceSpecificity
+                    bestAuraSpecificity = auraSpecificity
+                    bestDurationDistance = durationDistance
+                    ambiguous = false
+                elseif bestRule
+                    and bestRule.SpellId ~= rule.SpellId
+                    and evidenceSpecificity == bestEvidenceSpecificity
+                    and auraSpecificity == bestAuraSpecificity
+                    and math.abs(durationDistance - bestDurationDistance) <= 0.05
+                then
+                    ambiguous = true
+                end
             end
         end
-        return nil
+
+        if ambiguous then
+            return nil
+        end
+
+        return bestRule
     end
 
-    return TryRuleList(specID and AUTO_RULES.BySpec[specID])
-        or TryRuleList(AUTO_RULES.ByClass[classToken])
+    return TryRuleList(specID and MC:GetAutoTrackRulesBySpec(specID))
+        or TryRuleList(MC:GetAutoTrackRulesByClass(classToken))
         or MatchGenericRule(unit, auraTypes, measuredDuration, evidence)
 end
 
@@ -638,20 +533,20 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
     local bestRule
     local bestUnit = unit
     local bestCastTime
-    local isExternal = tracked.AuraTypes["EXTERNAL_DEFENSIVE"] == true
+    local isExternal = tracked.AuraTypes[AUTO_AURA.EXTERNAL_DEFENSIVE] == true
 
     local function Consider(candidateUnit, isTarget)
         local scratch = candidateEvidenceScratch
-        scratch.Debuff = nil
-        scratch.Shield = nil
-        scratch.UnitFlags = nil
-        scratch.FeignDeath = nil
-        scratch.Cast = nil
+        scratch[AUTO_EVIDENCE.DEBUFF] = nil
+        scratch[AUTO_EVIDENCE.SHIELD] = nil
+        scratch[AUTO_EVIDENCE.UNIT_FLAGS] = nil
+        scratch[AUTO_EVIDENCE.FEIGN_DEATH] = nil
+        scratch[AUTO_EVIDENCE.CAST] = nil
 
         local hasEvidence = false
         if tracked.Evidence then
             for key, value in pairs(tracked.Evidence) do
-                if key ~= "Cast" and value then
+                if key ~= AUTO_EVIDENCE.CAST and value then
                     scratch[key] = true
                     hasEvidence = true
                 end
@@ -660,7 +555,7 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
 
         local castTime = tracked.CastSnapshot[candidateUnit]
         if castTime and math.abs(castTime - tracked.StartTime) <= CAST_WINDOW then
-            scratch.Cast = true
+            scratch[AUTO_EVIDENCE.CAST] = true
             hasEvidence = true
         end
 
@@ -852,7 +747,11 @@ local function RecordUnitFlagsChange(unit)
 end
 
 local function TryRecordDebuffEvidence(unit, updateInfo)
-    if not IsArenaUnit(unit) or not updateInfo or not updateInfo.addedAuras then
+    if not IsArenaUnit(unit)
+        or not updateInfo
+        or updateInfo.isFullUpdate
+        or not updateInfo.addedAuras
+    then
         return
     end
 

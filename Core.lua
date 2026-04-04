@@ -63,6 +63,7 @@ local defaults = {
         debug = false,
         iconTooltips = true,
         autoEnemyCooldowns = true,
+        showOnlyAutoTrackableSpells = false,
         durationOverrides = {},  -- [spellKey] = seconds (0 = use default)
         customSpells = {},       -- [spellID] = { spellID, duration, class, category }
     },
@@ -282,6 +283,20 @@ function HB:GetEffectiveDuration(spellData)
         return override
     end
     return spellData.duration
+end
+
+function HB:IsSpellAutoTrackable(spellOrID)
+    local MC = self.MC
+    if not MC or not MC.IsSpellAutoTrackable then
+        return false
+    end
+
+    local spellID = type(spellOrID) == "table" and spellOrID.spellID or spellOrID
+    if not spellID then
+        return false
+    end
+
+    return MC:IsSpellAutoTrackable(spellID)
 end
 
 ------------------------------------------------------------------------

@@ -240,6 +240,7 @@ function HB:GetVisibleSpells(barName)
     local duplicateEnabled = barDB.duplicateSameSpecClass
     local arenaVis = barDB.arenaVisibility or "ALL"
     local arenaSlotClasses = self.arenaSlotClasses or {}
+    local onlyAutoTrackable = self.db.profile.showOnlyAutoTrackableSpells == true
 
     local function appendSharedEntry(spellData)
         tinsert(visibleSpells, BuildSpellEntry(spellData, nil))
@@ -330,7 +331,7 @@ function HB:GetVisibleSpells(barName)
     for spellKey, enabled in pairs(barDB.spells) do
         if enabled then
             local spellData = MC:GetByKey(spellKey)
-            if spellData then
+            if spellData and (not onlyAutoTrackable or self:IsSpellAutoTrackable(spellData)) then
                 if isTestMode then
                     -- Test mode: show ALL assigned spells
                     appendSharedEntry(spellData)
