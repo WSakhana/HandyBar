@@ -453,6 +453,20 @@ local function CooldownTimerOnUpdate(button, elapsed)
     end
 end
 
+local function UpdateChargeTextDisplay(button)
+    if not button or not button.chargeText then
+        return
+    end
+
+    if button.maxCharges > 1 and button.currentCharges and button.currentCharges >= 2 then
+        button.chargeText:SetText(tostring(button.currentCharges))
+        button.chargeText:Show()
+    else
+        button.chargeText:SetText("")
+        button.chargeText:Hide()
+    end
+end
+
 
 function HB:GetOrCreateButton(barFrame)
     -- Try reusing from pool
@@ -710,13 +724,7 @@ function HB:ConfigureButton(button, spellEntry, barDB)
     end
 
     -- Charge display
-    if button.maxCharges > 1 then
-        button.chargeText:SetText(tostring(button.currentCharges))
-        button.chargeText:Show()
-    else
-        button.chargeText:SetText("")
-        button.chargeText:Hide()
-    end
+    UpdateChargeTextDisplay(button)
 
     -- Class-colored border
     local MC = self.MC
@@ -1056,9 +1064,7 @@ local function ResetButtonCooldownInternal(self, button)
     button:SetScript("OnUpdate", nil)
 
     -- Restore charge display
-    if button.maxCharges > 1 then
-        button.chargeText:SetText(tostring(button.currentCharges))
-    end
+    UpdateChargeTextDisplay(button)
 
     return true
 end
@@ -1251,7 +1257,7 @@ function HB:UpdateButtonVisual(button)
 
     local barDB = self.db.profile.bars[button:GetParent().barName]
 
-    button.chargeText:SetText(tostring(button.currentCharges))
+    UpdateChargeTextDisplay(button)
 
     if button.currentCharges == 0 then
         -- All charges on cooldown
