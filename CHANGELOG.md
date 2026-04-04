@@ -2,6 +2,20 @@
 
 All notable changes for HandyBar are documented here.
 
+## 1.3.0 (2026-04-04)
+
+### Added
+
+- Automatic enemy cooldown detection now uses a Midnight-safe arena pipeline based on public aura instance IDs, Blizzard aura filters, and timing evidence only
+- Added a generic MajorCooldowns-driven fallback matcher to improve coverage for visible enemy buffs beyond the initial rule set
+
+### Changed
+
+- Improved arena slot/spec retention across arena updates so spec-specific enemy cooldown matching remains stable after `ARENA_OPPONENT_UPDATE`
+- Expanded debug logging for enemy cooldown auto-detection to make unmatched aura cases easier to diagnose
+- Rewrote the README in English
+- Updated addon metadata and release version to `1.3.0`
+
 ## 1.2.0 (2026-02-17)
 
 ### Added

@@ -9,6 +9,8 @@ local AUTO_DEDUPE_WINDOW = 0.35
 local RULE_TOLERANCE = 0.5
 local CAST_WINDOW = 0.15
 local EVIDENCE_TOLERANCE = 0.15
+local GENERIC_RULE_TOLERANCE = 1.25
+local GENERIC_RULE_EXTENSION_WINDOW = 4.0
 
 local AURA_FILTERS = {
     { key = "BIG_DEFENSIVE", filter = "HELPFUL|BIG_DEFENSIVE" },
@@ -419,6 +421,141 @@ local function RuleMatchesTrackableSpell(rule, unit)
     return spellData ~= nil and slotIndex ~= nil and HB:SpellMatchesArenaSlot(spellData, slotIndex)
 end
 
+local function SpellDataMatchesSpec(spellData, specID)
+    if not spellData then
+        return false
+    end
+
+    local specs = spellData.specs or {}
+    if #specs == 0 or not specID then
+        return true
+    end
+
+    for i = 1, #specs do
+        if specs[i] == specID then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function GetGenericAuraScore(spellData, auraTypes)
+    if not spellData or not HB.MC or not HB.MC.Category then
+        return nil
+    end
+
+    local C = HB.MC.Category
+    if spellData.category == C.BURST or spellData.category == C.OFFENSIVE then
+        if auraTypes["IMPORTANT"] then
+            return 0
+        end
+        return nil
+    end
+
+    if spellData.category == C.DEFENSIVE then
+        if auraTypes["BIG_DEFENSIVE"] then
+            return 0
+        end
+        if auraTypes["IMPORTANT"] then
+            return 0.4
+        end
+        return nil
+    end
+
+    if spellData.category == C.UTILITY then
+        if auraTypes["EXTERNAL_DEFENSIVE"] then
+            return 0
+        end
+        if auraTypes["IMPORTANT"] then
+            return 0.5
+        end
+        return nil
+    end
+
+    return nil
+end
+
+local function GetGenericDurationScore(spellData, measuredDuration)
+    local expected = spellData and spellData.effectDuration
+    if not expected or expected <= 0 then
+        return nil
+    end
+
+    local delta = math.abs(measuredDuration - expected)
+    if delta <= GENERIC_RULE_TOLERANCE then
+        return delta
+    end
+
+    if measuredDuration > expected then
+        local extension = measuredDuration - expected
+        if extension <= GENERIC_RULE_EXTENSION_WINDOW then
+            return 0.75 + extension
+        end
+    end
+
+    return nil
+end
+
+local function MatchGenericRule(unit, auraTypes, measuredDuration, evidence)
+    if not EvidenceMatchesReq(E_CAST, evidence) then
+        return nil
+    end
+
+    local classToken = GetArenaUnitClass(unit)
+    if not classToken or not HB.MC or not HB.MC.GetByClass then
+        return nil
+    end
+
+    local specID = GetArenaUnitSpec(unit)
+    local candidates = HB.MC:GetByClass(classToken) or {}
+    local bestSpellData
+    local bestScore
+    local bestSpellID
+    local ambiguous = false
+    local seenSpellIDs = {}
+
+    for i = 1, #candidates do
+        local spellData = candidates[i]
+        local spellID = spellData and spellData.spellID
+
+        if spellID
+            and not seenSpellIDs[spellID]
+            and spellData.effectDuration
+            and spellData.effectDuration > 0
+            and SpellDataMatchesSpec(spellData, specID)
+        then
+            seenSpellIDs[spellID] = true
+
+            local auraScore = GetGenericAuraScore(spellData, auraTypes)
+            local durationScore = auraScore and GetGenericDurationScore(spellData, measuredDuration) or nil
+            local matchesSlot = durationScore ~= nil and HB:SpellMatchesArenaSlot(spellData, GetArenaSlotFromUnit(unit))
+
+            if matchesSlot then
+                local totalScore = auraScore + durationScore
+                if not bestScore or totalScore < bestScore then
+                    bestSpellData = spellData
+                    bestSpellID = spellID
+                    bestScore = totalScore
+                    ambiguous = false
+                elseif bestSpellID ~= spellID and math.abs(totalScore - bestScore) <= 0.05 then
+                    ambiguous = true
+                end
+            end
+        end
+    end
+
+    if ambiguous or not bestSpellData then
+        return nil
+    end
+
+    return {
+        SpellId = bestSpellData.spellID,
+        BuffDuration = bestSpellData.effectDuration,
+        Generic = true,
+    }
+end
+
 local function MatchRule(unit, auraTypes, measuredDuration, evidence)
     local classToken = GetArenaUnitClass(unit)
     if not classToken then
@@ -443,7 +580,9 @@ local function MatchRule(unit, auraTypes, measuredDuration, evidence)
         return nil
     end
 
-    return TryRuleList(specID and AUTO_RULES.BySpec[specID]) or TryRuleList(AUTO_RULES.ByClass[classToken])
+    return TryRuleList(specID and AUTO_RULES.BySpec[specID])
+        or TryRuleList(AUTO_RULES.ByClass[classToken])
+        or MatchGenericRule(unit, auraTypes, measuredDuration, evidence)
 end
 
 local function GetCandidateUnits()
@@ -610,6 +749,19 @@ local function OnAuraRemoved(unit, tracked, now, candidateUnits)
         )
         return false
     end
+
+    if rule.Generic then
+        local spellInfo = HB:GetSpellData(rule.SpellId)
+        DebugAuto(
+            "Generic match %s for %s (%.1fs, %s, evidence=%s)",
+            spellInfo.name or tostring(rule.SpellId),
+            ruleUnit or unit,
+            measuredDuration,
+            FormatAuraTypes(tracked.AuraTypes),
+            FormatEvidence(tracked.Evidence)
+        )
+    end
+
     return TryAutoStartRule(rule, ruleUnit, unit, tracked.StartTime, measuredDuration)
 end
 

@@ -1,227 +1,170 @@
-# HandyBar (Retail 12+ / Interface 120000)
+# HandyBar (Retail 12.0.1+)
 
-HandyBar est un addon de suivi des cooldowns ennemis pour les arènes PvP sur World of Warcraft (Retail).
+HandyBar is a PvP arena addon for tracking enemy cooldowns with a hybrid workflow:
 
-Il peut maintenant **détecter automatiquement** une partie des cooldowns ennemis en arène à partir des casts ennemis et des buffs majeurs visibles, tout en conservant le **clic manuel** comme fallback.
+- automatic detection for many visible enemy cooldowns
+- manual click tracking as a reliable fallback
 
-- Version indiquée par l’addon : `1.2.0`
-- Variables sauvegardées : `HandyBarDB`
-- Dépendances embarquées : Ace3 + MajorCooldowns v2 (inclus dans le dossier `Libs/`)
+Version: `1.3.0`
 
----
+Saved variables: `HandyBarDB`
 
-## Fonctionnalités principales
+Embedded libraries: Ace3 + MajorCooldowns
 
-- **Barres de sorts** configurables (taille, espacement, direction de croissance, limite d’icônes, etc.)
-- **Filtrage arène** : les barres n’affichent des sorts que si l’addon est en arène (ou en mode test)
-- **Détection des adversaires** (classe/spé) via l’API de préparation d’arène Retail
-- **Filtre “All Enemies / Arena1 / Arena2 / Arena3”** par barre
-- **Duplication d’icônes** si plusieurs adversaires partagent la même classe/spé (option par barre)
-- **Détection automatique arena-only** via `UNIT_SPELLCAST_SUCCEEDED` et buffs visibles `BIG_DEFENSIVE` / `EXTERNAL_DEFENSIVE` / `IMPORTANT`
-- **Texte de cooldown** sur les icônes, + **spirale de cooldown**
-- **Bordure colorée par classe** (option)
-- **Support des sorts à charges** (si le sort a plusieurs charges côté MajorCooldowns)
-- **Overrides** de durée de cooldown (global, s’applique à toutes les barres)
-- **Ajout de sorts personnalisés** (non présents dans MajorCooldowns)
-- **Profils** AceDB (via l’onglet Profiles de Blizzard)
+## Highlights
 
----
+- Configurable spell bars
+- Arena-only visibility with a runtime Test Mode
+- Enemy class/spec detection from the Retail arena prep API
+- Per-bar visibility targeting: `All Enemies`, `Arena 1`, `Arena 2`, `Arena 3`
+- Optional duplication when multiple enemies share the same class/spec
+- Manual left-click start and right-click reset
+- Cooldown spiral, optional timer text, and class-colored borders
+- Charge support for spells that use multiple charges
+- Global cooldown overrides
+- Custom spell support
+- AceDB profiles
+
+## Automatic Enemy Cooldown Detection
+
+HandyBar can automatically start many enemy cooldowns in arena by combining:
+
+- `UNIT_AURA`
+- `UNIT_SPELLCAST_SUCCEEDED`
+- `UNIT_FLAGS`
+- `UNIT_ABSORB_AMOUNT_CHANGED`
+- Blizzard aura filters:
+  - `HELPFUL|BIG_DEFENSIVE`
+  - `HELPFUL|EXTERNAL_DEFENSIVE`
+  - `HELPFUL|IMPORTANT`
+
+The implementation is designed for Midnight-era addon restrictions:
+
+- no secret value comparisons
+- no direct reads of secret aura `spellId`, `duration`, or `expirationTime`
+- tracking is built around `auraInstanceID`, public filter membership, and timing evidence
+
+This is intentionally a best-effort arena tracker. It works well for many visible defensives, externals, and important offensives, but spells without a visible/public aura still require manual clicks.
 
 ## Installation
 
-1. Vérifiez que le dossier est bien placé ici :
-   - `World of Warcraft/_retail_/Interface/AddOns/HandyBar/`
-2. Le fichier TOC est : `HandyBar.toc` (Interface `120000`).
-3. (Recommandé) Redémarrez le jeu ou faites `/reload`.
+Install the addon to:
 
----
+`World of Warcraft/_retail_/Interface/AddOns/HandyBar/`
 
-## Démarrage rapide
+Then reload the UI with `/reload` or restart the game.
 
-1. Ouvrez la configuration :
-   - `/hb`
-2. Activez **Mode Test** pour voir toutes les barres et les sorts (hors arène).
-3. Déverrouillez les barres (**Lock Bars** OFF), placez-les, puis reverrouillez.
-4. Dans **Bars** → choisissez une barre → **Spells** : activez les sorts que vous voulez suivre.
+## Quick Start
 
----
+1. Open the options with `/hb`
+2. Enable `Test Mode` outside arena to place your bars
+3. Unlock the bars, move them, then lock them again
+4. Enable the spells you want to track in `Bars -> <Bar Name> -> Spells`
+5. Enable `Automatic Enemy Cooldown Detection` in `General` if you want hybrid tracking
 
-## Utilisation en match
+## Match Usage
 
-### Détection automatique
+### Automatic mode
 
-- Si **Automatic Enemy Cooldown Detection** est activé, HandyBar démarre automatiquement les sorts ennemis suivis quand il voit :
-  - un `UNIT_SPELLCAST_SUCCEEDED` sur `arena1..3`
-  - un buff majeur visible via les filtres Blizzard `HELPFUL|BIG_DEFENSIVE`, `HELPFUL|EXTERNAL_DEFENSIVE` ou `HELPFUL|IMPORTANT`
-- La détection automatique est **arena-only** et n’utilise **aucune secret value**.
+When automatic tracking is enabled, HandyBar tries to start tracked enemy cooldowns on its own whenever a visible/public arena signal is strong enough.
 
-### Clics sur les icônes
+### Manual mode
 
-- **Clic gauche** : démarre le cooldown manuellement (ou consomme une charge si le sort est à charges)
-- **Clic droit** : réinitialise le cooldown (et restaure les charges)
+- Left-click an icon to start the cooldown manually
+- Right-click an icon to reset it
 
-### Quand les barres sont visibles
+Manual mode always remains available, even when automatic detection is enabled.
 
-- En conditions normales, HandyBar n’affiche des icônes **qu’en arène**.
-- Hors arène, vous ne voyez rien **sauf** si vous activez le **Mode Test**.
+## Slash Commands
 
-### Important : suivi hybride
+- `/hb` opens the options
+- `/hb test` toggles Test Mode
+- `/hb lock` toggles bar locking
+- `/hb reset` resets all active cooldowns
 
-HandyBar reste utilisable en mode manuel, même avec l’auto-détection :
-- Si un sort n’est pas détecté automatiquement, vous pouvez toujours cliquer l’icône.
-- Si vous préférez un fonctionnement entièrement manuel, désactivez **Automatic Enemy Cooldown Detection** dans l’onglet **General**.
+## Configuration Overview
 
----
+### General
 
-## Commandes
+- `Test Mode`
+- `Lock Bars`
+- `Automatic Enemy Cooldown Detection`
+- `Debug Mode`
+- `Reset All Cooldowns`
+- `Reset Configuration`
 
-- `/hb` : ouvre la configuration
-- `/hb test` : active/désactive le **Mode Test**
-- `/hb lock` : verrouille/déverrouille les barres
-- `/hb reset` : réinitialise tous les cooldowns actifs
+### Bars
 
----
+Each bar supports:
 
-## Configuration (détaillée)
+- enable/disable
+- icon size
+- spacing
+- growth direction
+- max icons per row
+- icon display limit
+- cooldown text
+- class borders
+- arena visibility filter
+- duplicate same class/spec handling
 
-La configuration est fournie via AceConfig et apparaît dans l’interface Blizzard.
+### Customize
 
-### Onglet “General”
+- Global cooldown overrides for existing MajorCooldowns entries
+- Custom spell registration by Spell ID
+- Automatic tooltip-based cooldown extraction for custom spells
 
-- **Test Mode** : affiche toutes les barres + tous les sorts assignés, même hors arène
-  - Le mode test est **runtime uniquement** : il **ne persiste pas** au rechargement, ni aux transitions (zone/arène).
-- **Lock Bars** : empêche le déplacement des barres et masque le titre “draggable”
-- **Automatic Enemy Cooldown Detection** : active/désactive la détection automatique en arène
-- **Debug Mode** : affiche des logs dans le chat (détection d’ennemis, visibilité, etc.)
-- **Reset All Cooldowns** : remet à zéro tous les timers
-- **Reset Configuration** : remet l’intégralité de la config (bars, sorts, overrides) aux valeurs par défaut
+## Arena Detection
 
-### Onglet “Bars”
+HandyBar primarily uses:
 
-#### Créer une nouvelle barre
-- Entrez un nom → **Create Bar**
-
-#### Réglages d’une barre (Appearance)
-- **Enabled** : active/désactive la barre
-- **Icon Size** : taille des icônes
-- **Spacing** : espacement entre icônes
-- **Max Icons Per Row** : nombre max d’icônes par ligne avant retour à la ligne
-- **Icon Display Limit** : limite totale d’icônes affichées (0 = illimité)
-- **Grow Direction** :
-  - RIGHT/LEFT : lignes horizontales empilées verticalement
-  - DOWN/UP : colonnes verticales empilées horizontalement
-- **Show Cooldown Text** : affiche le temps restant au centre
-- **Show Icon Border** : bordure colorée selon la classe
-
-#### Actions
-- **Reset Bar Cooldowns** : reset uniquement la barre
-- **Reset Position** : recentre la barre à l’écran
-- **Delete This Bar** : supprime la barre et ses réglages
-
-### “Arena Visibility” (par barre)
-
-- **Visibility Mode** :
-  - **All Enemies** : affiche les sorts correspondant aux classes/spés détectées chez les adversaires
-  - **Arena 1/2/3 Only** : filtre la barre pour ne considérer que l’adversaire dans ce slot
-
-- **Duplicate Same Spec/Class** :
-  - Si plusieurs ennemis partagent la même classe/spé, HandyBar peut afficher plusieurs fois la même icône (une par “match”), pour faciliter le tracking parallèle.
-
-### “Spells” (sélection des sorts)
-
-- La liste est organisée par **classe**, et regroupe les sorts par :
-  - **All Specs** (sorts de classe)
-  - une spé unique
-  - **Multiple Specs**
-  - **Unknown Spec** (si la spé ne peut pas être résolue)
-
-Actions utiles :
-- **Enable Default** : active les sorts marqués `defaultEnabled` côté MajorCooldowns
-- **Disable All** : désactive tous les sorts de la classe pour cette barre
-
-### Onglet “Customize”
-
-#### Cooldown Overrides
-Permet de modifier la durée par défaut d’un sort de MajorCooldowns.
-- Les overrides sont **globaux** : ils s’appliquent à toutes les barres.
-- Activer un override ajoute une entrée dans `durationOverrides[spellKey]`.
-- La valeur est en secondes (plage 1 → 600 dans l’UI).
-
-#### Custom Spells
-Ajoute des sorts absents de MajorCooldowns.
-- Champs : **Spell ID**, **Cooldown (seconds)**, **Class**, **Specialization**, **Category**
-- **Auto-Détection** : Cliquez sur le bouton "Auto-Detect" pour extraire automatiquement la durée du cooldown depuis l'infobulle du sort (fonctionnalité ajoutée en v1.2.0)
-- Lors de la saisie d'un ID de sort, HandyBar tentera automatiquement de détecter le cooldown
-- Les sorts custom sont enregistrés sous une clé `custom_<SpellID>`.
-- Ils deviennent ensuite sélectionnables dans la liste de sorts (onglet Bars → Spells).
-
----
-
-## Fonctionnement interne (résumé technique)
-
-### Création des barres par défaut
-Au premier lancement (si aucune barre n’existe), HandyBar crée :
-- **Defensives** : au-dessus du centre
-- **Offensives** : en dessous du centre
-
-Les sorts activés par défaut proviennent de MajorCooldowns :
-- `DEFENSIVE` → Defensives
-- `BURST` / `OFFENSIVE` → Offensives
-
-### Détection des ennemis en arène
-HandyBar s’appuie en priorité sur l’API “prep” Retail :
 - `ARENA_PREP_OPPONENT_SPECIALIZATIONS`
-- `GetNumArenaOpponentSpecs()` + `GetArenaOpponentSpec(i)`
-- `GetSpecializationInfoByID(specID)` pour obtenir `classFile`
+- `GetNumArenaOpponentSpecs()`
+- `GetArenaOpponentSpec(i)`
+- `GetSpecializationInfoByID(specID)`
 
-Fallback : si les specs ne sont pas dispo, il tente `UnitClass("arenaX")`.
+If prep spec data is not immediately available, it falls back to `UnitClass("arenaX")` and keeps the best-known slot/spec mapping as the match progresses.
 
-### Visibilité / filtrage
-- Hors arène : rien n’est affiché (sauf **Mode Test**)
-- En arène : pour chaque sort activé dans la barre, l’addon vérifie s’il “matche” une classe/spé ennemie détectée.
+## Troubleshooting
 
-### Timers & charges
-- Les cooldowns sont gérés par AceTimer.
-- Pour les sorts à charges (`stack > 1` côté MajorCooldowns), HandyBar démarre un timer de recharge par charge consommée.
+### I see no icons in arena
 
----
+Check the following:
 
-## Dépannage
+1. The bar is enabled
+2. The relevant spells are enabled in that bar
+3. Arena visibility is not filtering the spell away
+4. You are actually in arena, or Test Mode is enabled
 
-### Je ne vois aucune icône en arène
-1. Vérifiez que la barre est **Enabled**.
-2. Vérifiez que des sorts sont activés : Bars → (votre barre) → Spells.
-3. Activez **Debug Mode** et entrez en arène :
-   - vous devez voir des logs “DetectArenaOpponents” et des classes détectées.
-4. Testez hors arène avec **Mode Test** pour valider la mise en page.
+### Automatic tracking misses some spells
 
-### Mes barres disparaissent hors arène
-C’est attendu : HandyBar est conçu pour n’afficher les barres **qu’en arène**, sauf en **Mode Test**.
+That is expected for some abilities. Automatic tracking only works when HandyBar can infer the cooldown from public arena information. Hidden, aura-less, or highly ambiguous spells may still require manual clicks.
 
-### Le Mode Test se désactive tout seul
-C’est volontaire : il est **non persistant** et est forcé OFF lors des reloads et transitions (et à l’entrée en arène réelle).
+If you want to inspect what the tracker is seeing:
 
----
+1. Enable `Debug Mode`
+2. Enter an arena
+3. Look for logs such as:
+   - `Tracking aura ...`
+   - `Generic match ...`
+   - `No rule match ...`
 
-## Localisation
+### Test Mode turns itself off
 
-- Anglais : `enUS` (locale par défaut)
-- Français : `frFR`
+This is intentional. Test Mode is runtime-only and is automatically disabled on reloads, zone changes, and real arena entry.
 
----
+## Important Files
 
-## Fichiers importants
-
-- `HandyBar.toc` : métadonnées, Interface 120000, ordre de chargement
-- `Core.lua` : DB, slash commands, defaults, overrides & custom spells
-- `Modules/Arena.lua` : détection ennemis en arène
-- `Modules/Bar.lua` : frames, layout, clics, timers, visibilité
-- `Modules/TestMode.lua` : mode test runtime
-- `Options.lua` : UI AceConfig
-
----
+- `HandyBar.toc`: addon metadata and load order
+- `Core.lua`: addon setup, DB, slash commands, shared helpers
+- `Modules/Bar.lua`: buttons, layout, timers, click handling
+- `Modules/Arena.lua`: arena enemy detection and slot/spec mapping
+- `Modules/EnemyCooldowns.lua`: automatic enemy cooldown detection
+- `Modules/TestMode.lua`: runtime test mode
+- `Options.lua`: AceConfig options UI
 
 ## Notes
 
-Cet addon embarque Ace3 et MajorCooldowns dans `Libs/`.
-Si vous modifiez des durées (Overrides) ou ajoutez des Custom Spells, pensez à vérifier que vos barres ont bien les sorts activés.
+HandyBar ships with Ace3 and MajorCooldowns inside `Libs/`.
+
+Automatic detection is meant to reduce manual workload, not fully replace manual arena awareness. If a spell is not auto-detected, you can still track it immediately with a click.
