@@ -207,6 +207,16 @@ end
 -- Spell Filtering
 ------------------------------------------------------------------------
 
+local function BuildSpellEntry(spellData, arenaSlot)
+    return {
+        spellData = spellData,
+        assignedArenaSlot = arenaSlot,
+        assignedUnit = arenaSlot and ("arena" .. tostring(arenaSlot)) or nil,
+    }
+end
+
+local StartButtonCooldownInternal
+
 function HB:GetVisibleSpells(barName)
     local barDB = self.db.profile.bars[barName]
     if not barDB then return {} end
@@ -229,6 +239,21 @@ function HB:GetVisibleSpells(barName)
     local enemyClassCounts = self.enemyClassCounts or {}
     local duplicateEnabled = barDB.duplicateSameSpecClass
     local arenaVis = barDB.arenaVisibility or "ALL"
+    local arenaSlotClasses = self.arenaSlotClasses or {}
+
+    local function appendSharedEntry(spellData)
+        tinsert(visibleSpells, BuildSpellEntry(spellData, nil))
+    end
+
+    local function appendSlotEntries(spellData, matchingSlots)
+        if duplicateEnabled and #matchingSlots > 0 then
+            for i = 1, #matchingSlots do
+                tinsert(visibleSpells, BuildSpellEntry(spellData, matchingSlots[i]))
+            end
+        elseif #matchingSlots > 0 then
+            appendSharedEntry(spellData)
+        end
+    end
 
     local function getMatchCount(spellData)
         local classFile = spellData.class
@@ -238,8 +263,7 @@ function HB:GetVisibleSpells(barName)
         if arenaVis ~= "ALL" then
             local slotIndex = tonumber(arenaVis:match("ARENA(%d)"))
             if slotIndex then
-                local slotClass = self.arenaSlotClasses and self.arenaSlotClasses[slotIndex]
-                if not slotClass or slotClass ~= classFile then
+                if not self:SpellMatchesArenaSlot(spellData, slotIndex) then
                     return 0
                 end
                 -- When targeting a specific slot, count is always 1
@@ -272,23 +296,59 @@ function HB:GetVisibleSpells(barName)
         return enemyClassCounts[classFile] or 1
     end
 
+    local function getMatchingSlots(spellData)
+        if arenaVis ~= "ALL" then
+            local slotIndex = tonumber(arenaVis:match("ARENA(%d)"))
+            if slotIndex and self:SpellMatchesArenaSlot(spellData, slotIndex) then
+                return { slotIndex }
+            end
+            return {}
+        end
+
+        local slots = self:GetMatchingArenaSlotsForSpell(spellData)
+        if #slots > 0 then
+            return slots
+        end
+
+        -- Fallback when slots/specs are not fully known yet: preserve the old
+        -- "class-only" behavior by creating shared entries based on class counts.
+        if enemyClassCounts[spellData.class] then
+            local fallback = {}
+            for slotIndex = 1, 5 do
+                if arenaSlotClasses[slotIndex] == spellData.class then
+                    fallback[#fallback + 1] = slotIndex
+                end
+            end
+            if #fallback > 0 then
+                return fallback
+            end
+        end
+
+        return {}
+    end
+
     for spellKey, enabled in pairs(barDB.spells) do
         if enabled then
             local spellData = MC:GetByKey(spellKey)
             if spellData then
                 if isTestMode then
                     -- Test mode: show ALL assigned spells
-                    tinsert(visibleSpells, spellData)
+                    appendSharedEntry(spellData)
                 elseif self.inArena then
                     -- Arena: only show spells matching enemy classes/specs
                     local matchCount = getMatchCount(spellData)
                     if matchCount > 0 then
-                        if duplicateEnabled then
-                            for i = 1, matchCount do
-                                tinsert(visibleSpells, spellData)
+                        local matchingSlots = getMatchingSlots(spellData)
+                        if arenaVis ~= "ALL" then
+                            if #matchingSlots > 0 then
+                                tinsert(visibleSpells, BuildSpellEntry(spellData, matchingSlots[1]))
                             end
+                        elseif #matchingSlots > 0 then
+                            appendSlotEntries(spellData, matchingSlots)
                         else
-                            tinsert(visibleSpells, spellData)
+                            for i = 1, matchCount do
+                                appendSharedEntry(spellData)
+                            end
                         end
                     end
                 end
@@ -303,21 +363,30 @@ function HB:GetVisibleSpells(barName)
 
     -- Sort: class (preferred order) -> priority (desc) -> localized spell name -> key
     table.sort(visibleSpells, function(a, b)
-        if a.class ~= b.class then
-            local ai = CLASS_INDEX[a.class] or 999
-            local bi = CLASS_INDEX[b.class] or 999
+        local aSpell = a.spellData
+        local bSpell = b.spellData
+
+        if aSpell.class ~= bSpell.class then
+            local ai = CLASS_INDEX[aSpell.class] or 999
+            local bi = CLASS_INDEX[bSpell.class] or 999
             return ai < bi
         end
 
-        local ap = a.priority or 0
-        local bp = b.priority or 0
+        local ap = aSpell.priority or 0
+        local bp = bSpell.priority or 0
         if ap ~= bp then return ap > bp end
 
-        local an = (HB:GetSpellData(a.spellID).name or "")
-        local bn = (HB:GetSpellData(b.spellID).name or "")
+        local an = (HB:GetSpellData(aSpell.spellID).name or "")
+        local bn = (HB:GetSpellData(bSpell.spellID).name or "")
         if an ~= bn then return an < bn end
 
-        return a.key < b.key
+        local aSlot = a.assignedArenaSlot or 99
+        local bSlot = b.assignedArenaSlot or 99
+        if aSlot ~= bSlot then
+            return aSlot < bSlot
+        end
+
+        return aSpell.key < bSpell.key
     end)
 
     -- Apply per-bar icon limit (0 = unlimited)
@@ -440,6 +509,14 @@ function HB:GetOrCreateButton(barFrame)
     button.chargeText:SetPoint("BOTTOMRIGHT", -2, 2)
     button.chargeText:SetTextColor(1, 1, 1, 1)
 
+    -- Arena slot badge (top-left) for slot-assigned buttons
+    button.slotText = button:CreateFontString(nil, "OVERLAY")
+    button.slotText:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+    button.slotText:SetPoint("TOPLEFT", 2, -2)
+    button.slotText:SetTextColor(1, 0.82, 0, 1)
+    button.slotText:SetText("")
+    button.slotText:Hide()
+
     -- Highlight on hover
     button.highlight = button:CreateTexture(nil, "HIGHLIGHT")
     button.highlight:SetAllPoints(button.icon)
@@ -524,6 +601,10 @@ function HB:GetOrCreateButton(barFrame)
                 GameTooltip:AddLine(classInfo.name .. " - " .. specStr, r, g, b)
             end
 
+            if self.assignedArenaSlot then
+                GameTooltip:AddLine(format(L["Arena Slot: %d"], self.assignedArenaSlot), 0.8, 0.8, 0.8)
+            end
+
             -- Spell description from WoW API (text only, no Blizzard cooldown info)
             local desc = getSpellDescription()
             if desc and desc ~= "" then
@@ -575,11 +656,28 @@ end
 -- Button Configuration
 ------------------------------------------------------------------------
 
-function HB:ConfigureButton(button, spellData, barDB)
+local function GetSpellInstanceBaseKey(spellData, assignedArenaSlot)
+    return tostring(spellData.key) .. ":" .. tostring(assignedArenaSlot or "shared")
+end
+
+local function GetSpellInstanceKey(spellData, assignedArenaSlot, counts)
+    local baseKey = GetSpellInstanceBaseKey(spellData, assignedArenaSlot)
+    counts[baseKey] = (counts[baseKey] or 0) + 1
+    return baseKey .. "#" .. tostring(counts[baseKey])
+end
+
+function HB:ConfigureButton(button, spellEntry, barDB)
+    local spellData = spellEntry.spellData
+
+    button.spellEntry = spellEntry
     button.spellData = spellData
+    button.assignedArenaSlot = spellEntry.assignedArenaSlot
+    button.assignedUnit = spellEntry.assignedUnit
     button.maxCharges = spellData.stack or 1
     button.currentCharges = button.maxCharges
     button.cooldownEndTime = nil
+    button.cooldownStartTime = nil
+    button.currentCooldownDuration = nil
     button.rechargeTimers = {}
     button.timerElapsed = 0
 
@@ -600,6 +698,16 @@ function HB:ConfigureButton(button, spellData, barDB)
 
     local chargeFontSize = max(8, floor(iconSize * 0.3))
     button.chargeText:SetFont("Fonts\\FRIZQT__.TTF", chargeFontSize, "OUTLINE")
+
+    local slotFontSize = max(8, floor(iconSize * 0.24))
+    button.slotText:SetFont("Fonts\\FRIZQT__.TTF", slotFontSize, "OUTLINE")
+    if button.assignedArenaSlot then
+        button.slotText:SetText(tostring(button.assignedArenaSlot))
+        button.slotText:Show()
+    else
+        button.slotText:SetText("")
+        button.slotText:Hide()
+    end
 
     -- Charge display
     if button.maxCharges > 1 then
@@ -652,7 +760,80 @@ function HB:CleanupButton(button)
         button.rechargeTimers = {}
     end
     button.cooldownEndTime = nil
+    button.cooldownStartTime = nil
+    button.currentCooldownDuration = nil
+    button.spellEntry = nil
+    button.assignedArenaSlot = nil
+    button.assignedUnit = nil
+    button.slotText:SetText("")
+    button.slotText:Hide()
     button:SetScript("OnUpdate", nil)
+end
+
+function HB:CaptureButtonState(button)
+    if not button or not button.spellData then
+        return nil
+    end
+
+    local now = GetTime()
+
+    if button.maxCharges > 1 then
+        if not button.rechargeTimers or #button.rechargeTimers == 0 then
+            return nil
+        end
+
+        local timers = {}
+        for i = 1, #button.rechargeTimers do
+            local timerInfo = button.rechargeTimers[i]
+            if timerInfo.endTime and timerInfo.endTime > now then
+                timers[#timers + 1] = {
+                    startTime = timerInfo.startTime,
+                    endTime = timerInfo.endTime,
+                    duration = timerInfo.duration,
+                }
+            end
+        end
+
+        if #timers == 0 then
+            return nil
+        end
+
+        table.sort(timers, function(a, b)
+            return a.endTime < b.endTime
+        end)
+
+        return {
+            rechargeTimers = timers,
+        }
+    end
+
+    if button.cooldownEndTime and button.cooldownEndTime > now then
+        return {
+            startTime = button.cooldownStartTime or (button.cooldownEndTime - (button.currentCooldownDuration or self:GetEffectiveDuration(button.spellData))),
+            endTime = button.cooldownEndTime,
+            duration = button.currentCooldownDuration or self:GetEffectiveDuration(button.spellData),
+        }
+    end
+
+    return nil
+end
+
+function HB:RestoreButtonState(button, state)
+    if not button or not state then
+        return false
+    end
+
+    if state.rechargeTimers then
+        local restored = false
+        for i = 1, #state.rechargeTimers do
+            if StartButtonCooldownInternal(self, button, state.rechargeTimers[i]) then
+                restored = true
+            end
+        end
+        return restored
+    end
+
+    return StartButtonCooldownInternal(self, button, state)
 end
 
 ------------------------------------------------------------------------
@@ -676,8 +857,16 @@ function HB:UpdateBarSpells(barName)
         return 
     end
 
+    local preservedStates = {}
+    local previousStateCounts = {}
+
     -- Return current buttons to pool
     for _, button in ipairs(frame.activeButtons) do
+        local stateKey = GetSpellInstanceKey(button.spellData, button.assignedArenaSlot, previousStateCounts)
+        local preserved = self:CaptureButtonState(button)
+        if preserved then
+            preservedStates[stateKey] = preserved
+        end
         self:CleanupButton(button)
         button:Hide()
         tinsert(frame.buttonPool, button)
@@ -689,10 +878,17 @@ function HB:UpdateBarSpells(barName)
     
     -- (debug) intentionally quiet here
 
+    local newStateCounts = {}
+
     -- Create/configure buttons
-    for _, spellData in ipairs(visibleSpells) do
+    for _, spellEntry in ipairs(visibleSpells) do
         local button = self:GetOrCreateButton(frame)
-        self:ConfigureButton(button, spellData, barDB)
+        self:ConfigureButton(button, spellEntry, barDB)
+        local stateKey = GetSpellInstanceKey(spellEntry.spellData, spellEntry.assignedArenaSlot, newStateCounts)
+        local preserved = preservedStates[stateKey]
+        if preserved then
+            self:RestoreButtonState(button, preserved)
+        end
         tinsert(frame.activeButtons, button)
     end
 
@@ -829,22 +1025,76 @@ end
 -- Cooldown Start (Left-Click)
 ------------------------------------------------------------------------
 
-function HB:StartSpellCooldown(button)
-    if not button.spellData then return end
+local function ResetButtonCooldownInternal(self, button)
+    if not button or not button.spellData then
+        return false
+    end
 
-    local duration = self:GetEffectiveDuration(button.spellData)
-    if not duration or duration <= 0 then return end
+    -- Cancel all timers
+    if button.cooldownTimer then
+        self:CancelTimer(button.cooldownTimer)
+        button.cooldownTimer = nil
+    end
+
+    if button.rechargeTimers then
+        for _, ti in ipairs(button.rechargeTimers) do
+            if ti.handle then
+                self:CancelTimer(ti.handle)
+            end
+        end
+        button.rechargeTimers = {}
+    end
+
+    -- Reset visual state
+    button.cooldownEndTime = nil
+    button.cooldownStartTime = nil
+    button.currentCooldownDuration = nil
+    button.currentCharges = button.maxCharges
+    button.cooldown:Clear()
+    button.icon:SetDesaturated(false)
+    button.timerText:SetText("")
+    button:SetScript("OnUpdate", nil)
+
+    -- Restore charge display
+    if button.maxCharges > 1 then
+        button.chargeText:SetText(tostring(button.currentCharges))
+    end
+
+    return true
+end
+
+StartButtonCooldownInternal = function(self, button, opts)
+    if not button or not button.spellData then
+        return false
+end
+
+    opts = opts or {}
+
+    local duration = opts.duration or self:GetEffectiveDuration(button.spellData)
+    if not duration or duration <= 0 then
+        return false
+    end
+
+    local startTime = opts.startTime or GetTime()
+    local endTime = opts.endTime or (startTime + duration)
+    local remaining = endTime - GetTime()
+    if remaining <= 0 then
+        ResetButtonCooldownInternal(self, button)
+        return false
+    end
 
     local barDB = self.db.profile.bars[button:GetParent().barName]
 
     if button.maxCharges > 1 then
         -- ---- Charge-based cooldown ----
-        if button.currentCharges <= 0 then return end
+        if button.currentCharges <= 0 then
+            if opts.ignoreIfActive then
+                return false
+            end
+            return false
+        end
 
         button.currentCharges = button.currentCharges - 1
-
-        local startTime = GetTime()
-        local endTime = startTime + duration
 
         local timerInfo = {
             startTime = startTime,
@@ -865,40 +1115,114 @@ function HB:StartSpellCooldown(button)
             end
 
             self:UpdateButtonVisual(button)
-        end, duration)
+        end, remaining)
 
         tinsert(button.rechargeTimers, timerInfo)
         self:UpdateButtonVisual(button)
+        return true
+    end
+
+    -- ---- Single-charge cooldown ----
+    if button.cooldownEndTime and button.cooldownEndTime > GetTime() and opts.ignoreIfActive then
+        return false
+    end
+
+    -- Cancel existing cooldown if re-clicking/restarting
+    if button.cooldownTimer then
+        self:CancelTimer(button.cooldownTimer)
+        button.cooldownTimer = nil
+    end
+
+    button.cooldownStartTime = startTime
+    button.currentCooldownDuration = duration
+    button.cooldownEndTime = endTime
+
+    -- Start spiral animation
+    button.cooldown:SetCooldown(startTime, duration)
+    button.icon:SetDesaturated(true)
+
+    -- Start timer text if enabled
+    if barDB and barDB.showCooldownText then
+        button.timerElapsed = 0
+        button:SetScript("OnUpdate", CooldownTimerOnUpdate)
+    end
+
+    -- Schedule cooldown end
+    button.cooldownTimer = self:ScheduleTimer(function()
+        button.cooldownEndTime = nil
+        button.cooldownStartTime = nil
+        button.currentCooldownDuration = nil
+        button.cooldown:Clear()
+        button.icon:SetDesaturated(false)
+        button.timerText:SetText("")
+        button:SetScript("OnUpdate", nil)
+        button.cooldownTimer = nil
+    end, remaining)
+
+    return true
+end
+
+function HB:ForEachSpellButton(spellID, slotIndex, callback, opts)
+    if not spellID or not callback then
+        return
+    end
+
+    opts = opts or {}
+
+    for _, frame in pairs(self.barFrames) do
+        for _, button in ipairs(frame.activeButtons) do
+            if button.spellData and button.spellData.spellID == spellID then
+                local matches = false
+
+                if slotIndex then
+                    if button.assignedArenaSlot then
+                        matches = (button.assignedArenaSlot == slotIndex)
+                    elseif not opts.slotOnly then
+                        matches = self:SpellMatchesArenaSlot(button.spellData, slotIndex)
+                    end
+                else
+                    matches = not button.assignedArenaSlot
+                end
+
+                if matches then
+                    callback(button)
+                end
+            end
+        end
+    end
+end
+
+function HB:StartCooldownBySpellID(spellID, slotIndex, opts)
+    local started = 0
+
+    self:ForEachSpellButton(spellID, slotIndex, function(button)
+        if StartButtonCooldownInternal(self, button, opts) then
+            started = started + 1
+        end
+    end, opts)
+
+    return started
+end
+
+function HB:ResetCooldownBySpellID(spellID, slotIndex, opts)
+    local reset = 0
+
+    self:ForEachSpellButton(spellID, slotIndex, function(button)
+        if ResetButtonCooldownInternal(self, button) then
+            reset = reset + 1
+        end
+    end, opts)
+
+    return reset
+end
+
+function HB:StartSpellCooldown(button)
+    if not button.spellData then return end
+
+    if button.assignedArenaSlot then
+        self:StartCooldownBySpellID(button.spellData.spellID, button.assignedArenaSlot)
     else
-        -- ---- Single-charge cooldown ----
-        -- Cancel existing cooldown if re-clicking
-        if button.cooldownTimer then
-            self:CancelTimer(button.cooldownTimer)
-            button.cooldownTimer = nil
-        end
-
-        local startTime = GetTime()
-        button.cooldownEndTime = startTime + duration
-
-        -- Start spiral animation
-        button.cooldown:SetCooldown(startTime, duration)
-        button.icon:SetDesaturated(true)
-
-        -- Start timer text if enabled
-        if barDB and barDB.showCooldownText then
-            button.timerElapsed = 0
-            button:SetScript("OnUpdate", CooldownTimerOnUpdate)
-        end
-
-        -- Schedule cooldown end
-        button.cooldownTimer = self:ScheduleTimer(function()
-            button.cooldownEndTime = nil
-            button.cooldown:Clear()
-            button.icon:SetDesaturated(false)
-            button.timerText:SetText("")
-            button:SetScript("OnUpdate", nil)
-            button.cooldownTimer = nil
-        end, duration)
+        self:StartCooldownBySpellID(button.spellData.spellID, nil, { slotOnly = true })
     end
 end
 
@@ -909,30 +1233,10 @@ end
 function HB:ResetSpellCooldown(button)
     if not button.spellData then return end
 
-    -- Cancel all timers
-    if button.cooldownTimer then
-        self:CancelTimer(button.cooldownTimer)
-        button.cooldownTimer = nil
-    end
-
-    if button.rechargeTimers then
-        for _, ti in ipairs(button.rechargeTimers) do
-            if ti.handle then self:CancelTimer(ti.handle) end
-        end
-        button.rechargeTimers = {}
-    end
-
-    -- Reset visual state
-    button.cooldownEndTime = nil
-    button.currentCharges = button.maxCharges
-    button.cooldown:Clear()
-    button.icon:SetDesaturated(false)
-    button.timerText:SetText("")
-    button:SetScript("OnUpdate", nil)
-
-    -- Restore charge display
-    if button.maxCharges > 1 then
-        button.chargeText:SetText(tostring(button.currentCharges))
+    if button.assignedArenaSlot then
+        self:ResetCooldownBySpellID(button.spellData.spellID, button.assignedArenaSlot)
+    else
+        self:ResetCooldownBySpellID(button.spellData.spellID, nil, { slotOnly = true })
     end
 end
 
@@ -954,7 +1258,7 @@ function HB:UpdateButtonVisual(button)
         button.icon:SetDesaturated(true)
         if #button.rechargeTimers > 0 then
             local soonest = button.rechargeTimers[1]
-            button.cooldown:SetCooldown(soonest.startTime, button.spellData.duration)
+            button.cooldown:SetCooldown(soonest.startTime, soonest.duration)
             button.cooldownEndTime = soonest.endTime
             if barDB and barDB.showCooldownText then
                 button.timerElapsed = 0
@@ -967,7 +1271,7 @@ function HB:UpdateButtonVisual(button)
         button.icon:SetDesaturated(false)
         if #button.rechargeTimers > 0 then
             local soonest = button.rechargeTimers[1]
-            button.cooldown:SetCooldown(soonest.startTime, button.spellData.duration)
+            button.cooldown:SetCooldown(soonest.startTime, soonest.duration)
             button.cooldownEndTime = soonest.endTime
             if barDB and barDB.showCooldownText then
                 button.timerElapsed = 0

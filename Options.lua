@@ -139,6 +139,20 @@ function HB:GetGeneralOptions()
                     end
                 end,
             },
+            autoEnemyCooldowns = {
+                type = "toggle",
+                name = L["Automatic Enemy Cooldown Detection"],
+                desc = L["AUTO_ENEMY_CD_DESC"],
+                order = 15,
+                width = "full",
+                get = function() return HB.db.profile.autoEnemyCooldowns ~= false end,
+                set = function(_, val)
+                    HB.db.profile.autoEnemyCooldowns = val
+                    if HB.RefreshEnemyCooldownTracking then
+                        HB:RefreshEnemyCooldownTracking()
+                    end
+                end,
+            },
             locked = {
                 type = "toggle",
                 name = L["Lock Bars"],

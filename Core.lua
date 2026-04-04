@@ -62,6 +62,7 @@ local defaults = {
         locked = false,
         debug = false,
         iconTooltips = true,
+        autoEnemyCooldowns = true,
         durationOverrides = {},  -- [spellKey] = seconds (0 = use default)
         customSpells = {},       -- [spellID] = { spellID, duration, class, category }
     },
@@ -90,6 +91,10 @@ function HB:OnInitialize()
     self.barFrames = {}
     self.enemyClasses = {}
     self.enemySpecsByClass = {}
+    self.enemyClassCounts = {}
+    self.enemySpecCountsByClass = {}
+    self.arenaSlotClasses = {}
+    self.arenaSlotSpecs = {}
     self.inArena = false
 
     -- Create default bars on first use
@@ -111,6 +116,10 @@ end
 function HB:OnEnable()
     -- Create all bar frames from saved config
     self:CreateAllBars()
+
+    if self.InitializeEnemyCooldownTracking then
+        self:InitializeEnemyCooldownTracking()
+    end
 
     -- Register arena-related events
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
@@ -153,6 +162,9 @@ function HB:ResetConfiguration()
 end
 
 function HB:OnDisable()
+    if self.DisableEnemyCooldownTracking then
+        self:DisableEnemyCooldownTracking()
+    end
     self:UnregisterAllEvents()
     self:HideAllBars()
 end

@@ -1,8 +1,8 @@
 # HandyBar (Retail 12+ / Interface 120000)
 
-HandyBar est un addon **de suivi manuel des cooldowns** pour les arènes PvP sur World of Warcraft (Retail).
+HandyBar est un addon de suivi des cooldowns ennemis pour les arènes PvP sur World of Warcraft (Retail).
 
-Contrairement aux trackers “automatiques”, HandyBar vous demande d’**indiquer vous‑même** qu’un sort ennemi a été utilisé : vous **cliquez** sur l’icône du sort quand vous le voyez partir, et l’addon lance le décompte.
+Il peut maintenant **détecter automatiquement** une partie des cooldowns ennemis en arène à partir des casts ennemis et des buffs majeurs visibles, tout en conservant le **clic manuel** comme fallback.
 
 - Version indiquée par l’addon : `1.2.0`
 - Variables sauvegardées : `HandyBarDB`
@@ -17,6 +17,7 @@ Contrairement aux trackers “automatiques”, HandyBar vous demande d’**indiq
 - **Détection des adversaires** (classe/spé) via l’API de préparation d’arène Retail
 - **Filtre “All Enemies / Arena1 / Arena2 / Arena3”** par barre
 - **Duplication d’icônes** si plusieurs adversaires partagent la même classe/spé (option par barre)
+- **Détection automatique arena-only** via `UNIT_SPELLCAST_SUCCEEDED` et buffs visibles `BIG_DEFENSIVE` / `EXTERNAL_DEFENSIVE` / `IMPORTANT`
 - **Texte de cooldown** sur les icônes, + **spirale de cooldown**
 - **Bordure colorée par classe** (option)
 - **Support des sorts à charges** (si le sort a plusieurs charges côté MajorCooldowns)
@@ -47,9 +48,16 @@ Contrairement aux trackers “automatiques”, HandyBar vous demande d’**indiq
 
 ## Utilisation en match
 
+### Détection automatique
+
+- Si **Automatic Enemy Cooldown Detection** est activé, HandyBar démarre automatiquement les sorts ennemis suivis quand il voit :
+  - un `UNIT_SPELLCAST_SUCCEEDED` sur `arena1..3`
+  - un buff majeur visible via les filtres Blizzard `HELPFUL|BIG_DEFENSIVE`, `HELPFUL|EXTERNAL_DEFENSIVE` ou `HELPFUL|IMPORTANT`
+- La détection automatique est **arena-only** et n’utilise **aucune secret value**.
+
 ### Clics sur les icônes
 
-- **Clic gauche** : démarre le cooldown (ou consomme une charge si le sort est à charges)
+- **Clic gauche** : démarre le cooldown manuellement (ou consomme une charge si le sort est à charges)
 - **Clic droit** : réinitialise le cooldown (et restaure les charges)
 
 ### Quand les barres sont visibles
@@ -57,11 +65,11 @@ Contrairement aux trackers “automatiques”, HandyBar vous demande d’**indiq
 - En conditions normales, HandyBar n’affiche des icônes **qu’en arène**.
 - Hors arène, vous ne voyez rien **sauf** si vous activez le **Mode Test**.
 
-### Important : suivi manuel
+### Important : suivi hybride
 
-HandyBar **ne détecte pas automatiquement** qu’un ennemi a lancé un sort. Le principe est volontairement “manual-first” :
-- Si vous oubliez de cliquer, le cooldown ne démarre pas.
-- Si un sort est “fake cast”, annulé, ou si vous n’êtes pas sûr, vous pouvez choisir de ne pas le cliquer.
+HandyBar reste utilisable en mode manuel, même avec l’auto-détection :
+- Si un sort n’est pas détecté automatiquement, vous pouvez toujours cliquer l’icône.
+- Si vous préférez un fonctionnement entièrement manuel, désactivez **Automatic Enemy Cooldown Detection** dans l’onglet **General**.
 
 ---
 
@@ -83,6 +91,7 @@ La configuration est fournie via AceConfig et apparaît dans l’interface Blizz
 - **Test Mode** : affiche toutes les barres + tous les sorts assignés, même hors arène
   - Le mode test est **runtime uniquement** : il **ne persiste pas** au rechargement, ni aux transitions (zone/arène).
 - **Lock Bars** : empêche le déplacement des barres et masque le titre “draggable”
+- **Automatic Enemy Cooldown Detection** : active/désactive la détection automatique en arène
 - **Debug Mode** : affiche des logs dans le chat (détection d’ennemis, visibilité, etc.)
 - **Reset All Cooldowns** : remet à zéro tous les timers
 - **Reset Configuration** : remet l’intégralité de la config (bars, sorts, overrides) aux valeurs par défaut

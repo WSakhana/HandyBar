@@ -5,6 +5,15 @@
 local addonName, ns = ...
 local HB = ns.HB
 
+local function ResetArenaEnemyState(self)
+    self.enemyClasses = {}
+    self.enemySpecsByClass = {}
+    self.enemyClassCounts = {}
+    self.enemySpecCountsByClass = {}
+    self.arenaSlotClasses = {}
+    self.arenaSlotSpecs = {}
+end
+
 ------------------------------------------------------------------------
 -- Event Handlers
 ------------------------------------------------------------------------
@@ -24,20 +33,22 @@ function HB:OnPlayerEnteringWorld()
 
     if self.inArena then
         -- Entering arena: reset state for fresh match
-        self.enemyClasses = {}
-        self.enemySpecsByClass = {}
-        self.enemyClassCounts = {}
-        self.enemySpecCountsByClass = {}
-        self.arenaSlotClasses = {}
+        ResetArenaEnemyState(self)
         self:ResetAllCooldowns()
+        if self.ResetEnemyCooldownTracking then
+            self:ResetEnemyCooldownTracking()
+        end
         self:DetectArenaOpponents()
     elseif wasInArena then
         -- Leaving arena: clear enemy data
-        self.enemyClasses = {}
-        self.enemySpecsByClass = {}
-        self.enemyClassCounts = {}
-        self.enemySpecCountsByClass = {}
-        self.arenaSlotClasses = {}
+        ResetArenaEnemyState(self)
+        if self.ResetEnemyCooldownTracking then
+            self:ResetEnemyCooldownTracking()
+        end
+    end
+
+    if self.RefreshEnemyCooldownTracking then
+        self:RefreshEnemyCooldownTracking()
     end
 
     self:UpdateAllBars()
@@ -61,14 +72,16 @@ function HB:OnArenaPrepOpponentSpecs()
     -- Update the flag if needed (in case this event fires first)
     if not self.inArena then
         self.inArena = true
-        self.enemyClasses = {}
-        self.enemySpecsByClass = {}
-        self.enemyClassCounts = {}
-        self.enemySpecCountsByClass = {}
-        self.arenaSlotClasses = {}
+        ResetArenaEnemyState(self)
+        if self.ResetEnemyCooldownTracking then
+            self:ResetEnemyCooldownTracking()
+        end
     end
     
     self:DetectArenaOpponents()
+    if self.RefreshEnemyCooldownTracking then
+        self:RefreshEnemyCooldownTracking()
+    end
     self:UpdateAllBars()
 end
 
@@ -81,6 +94,9 @@ function HB:OnArenaOpponentUpdate(event, unitID, updateType)
     end
     
     self:DetectArenaOpponents()
+    if self.RefreshEnemyCooldownTracking then
+        self:RefreshEnemyCooldownTracking()
+    end
     self:UpdateAllBars()
 end
 
@@ -90,11 +106,9 @@ end
 ------------------------------------------------------------------------
 
 function HB:DetectArenaOpponents()
-    self.enemyClasses = {}
-    self.enemySpecsByClass = {}
-    self.enemyClassCounts = {}
-    self.enemySpecCountsByClass = {}
-    self.arenaSlotClasses = {}
+    local previousSlotClasses = self.arenaSlotClasses or {}
+    local previousSlotSpecs = self.arenaSlotSpecs or {}
+    ResetArenaEnemyState(self)
 
     local function addEnemy(slotIndex, classFile, specID)
         if not classFile then return end
@@ -102,6 +116,7 @@ function HB:DetectArenaOpponents()
         self.enemyClassCounts[classFile] = (self.enemyClassCounts[classFile] or 0) + 1
         if slotIndex then
             self.arenaSlotClasses[slotIndex] = classFile
+            self.arenaSlotSpecs[slotIndex] = (specID and specID > 0) and specID or 0
         end
         if specID and specID > 0 then
             local bucket = self.enemySpecsByClass[classFile]
@@ -120,37 +135,33 @@ function HB:DetectArenaOpponents()
         end
     end
 
-    -- Method 1: Arena Prep API (preferred, works even before UnitExists)
-    -- This is the robust way on Retail - provides specs during prep phase
     local numSpecs = GetNumArenaOpponentSpecs and GetNumArenaOpponentSpecs() or 0
     
     if self.db.profile.debug then
         self:Print("|cFF00FF00[HandyBar]|r DetectArenaOpponents: numSpecs =", numSpecs)
     end
     
-    if numSpecs > 0 then
-        for i = 1, numSpecs do
-            local specID = GetArenaOpponentSpec(i) or 0
-            if specID > 0 then
-                -- GetSpecializationInfoByID returns: id, name, description, icon, role, classFile, className
-                local _, _, _, _, _, classFile = GetSpecializationInfoByID(specID)
-                addEnemy(i, classFile, specID)
-            else
-                local unitID = "arena" .. i
-                if UnitExists(unitID) then
-                    local _, classFile = UnitClass(unitID)
-                    addEnemy(i, classFile, nil)
-                end
-            end
-        end
-    else
-        -- Method 2: UnitClass fallback (works when units are visible)
-        -- Covers edge cases when prep specs are unavailable
-        for i = 1, 5 do
+    for i = 1, 5 do
+        local specID = GetArenaOpponentSpec and (GetArenaOpponentSpec(i) or 0) or 0
+        if specID > 0 then
+            -- GetSpecializationInfoByID returns: id, name, description, icon, role, classFile, className
+            local _, _, _, _, _, classFile = GetSpecializationInfoByID(specID)
+            addEnemy(i, classFile, specID)
+        else
             local unitID = "arena" .. i
             if UnitExists(unitID) then
                 local _, classFile = UnitClass(unitID)
-                addEnemy(i, classFile, nil)
+                local preservedSpec = nil
+                if classFile and classFile == previousSlotClasses[i] then
+                    preservedSpec = previousSlotSpecs[i]
+                end
+                addEnemy(i, classFile, preservedSpec)
+            elseif previousSlotClasses[i] then
+                addEnemy(i, previousSlotClasses[i], previousSlotSpecs[i])
+            elseif i <= numSpecs then
+                -- During prep, some clients report slot count before all spec details are queryable.
+                -- Keep the slot visible with its best-known class once the unit appears.
+                addEnemy(i, previousSlotClasses[i], previousSlotSpecs[i])
             end
         end
     end
@@ -211,4 +222,63 @@ end
 
 function HB:GetEnemySpecsByClass()
     return self.enemySpecsByClass
+end
+
+function HB:GetArenaSlotClass(slotIndex)
+    return self.arenaSlotClasses and self.arenaSlotClasses[slotIndex] or nil
+end
+
+function HB:GetArenaSlotSpec(slotIndex)
+    return self.arenaSlotSpecs and self.arenaSlotSpecs[slotIndex] or nil
+end
+
+function HB:GetArenaUnitToken(slotIndex)
+    if not slotIndex then
+        return nil
+    end
+    return "arena" .. tostring(slotIndex)
+end
+
+function HB:SpellMatchesArenaSlot(spellData, slotIndex)
+    if not spellData or not slotIndex then
+        return false
+    end
+
+    local slotClass = self:GetArenaSlotClass(slotIndex)
+    if not slotClass or slotClass ~= spellData.class then
+        return false
+    end
+
+    local specs = spellData.specs or {}
+    if #specs == 0 then
+        return true
+    end
+
+    local slotSpec = self:GetArenaSlotSpec(slotIndex)
+    if not slotSpec or slotSpec <= 0 then
+        return true
+    end
+
+    for i = 1, #specs do
+        if specs[i] == slotSpec then
+            return true
+        end
+    end
+
+    return false
+end
+
+function HB:GetMatchingArenaSlotsForSpell(spellData)
+    local slots = {}
+    if not spellData then
+        return slots
+    end
+
+    for slotIndex = 1, 5 do
+        if self:SpellMatchesArenaSlot(spellData, slotIndex) then
+            slots[#slots + 1] = slotIndex
+        end
+    end
+
+    return slots
 end
