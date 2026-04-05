@@ -81,6 +81,43 @@ HandyBar uses both:
 
 Automatic tracking is intentionally best-effort. Spells with no visible/public aura or ambiguous evidence may still require manual clicks.
 
+#### Auto-Tracking Flow
+
+The auto-tracker follows this public-data pipeline:
+
+```mermaid
+flowchart TD
+  A[Public arena events] --> B[Collect timing evidence]
+  A1[UNIT_AURA] --> A
+  A2[UNIT_SPELLCAST_SUCCEEDED] --> A
+  A3[UNIT_FLAGS] --> A
+  A4[UNIT_ABSORB_AMOUNT_CHANGED] --> A
+  A5[UNIT_MAXHEALTH] --> A
+
+  B --> C[Track auraInstanceID and aura filter membership]
+  C --> D[Backfill a short evidence window]
+  D --> E{EarlyDetect rule matches\nand result is unambiguous?}
+
+  E -- Yes --> F[Start cooldown immediately]
+  E -- No --> G[Wait for aura removal]
+
+  G --> H[Measure visible aura duration]
+  H --> I[Try explicit MajorCooldowns auto-track rules]
+  I --> J{Rule matched?}
+
+  J -- Yes --> K[Start cooldown on the matched arena slot]
+  J -- No --> L[Try generic fallback matching]
+  L --> M{Strong public match?}
+
+  M -- Yes --> K
+  M -- No --> N[Leave spell for manual tracking]
+```
+
+Notes:
+
+- `EarlyDetect` allows HandyBar to start long offensive or defensive buffs at aura appearance time instead of waiting for the buff to expire.
+- The matching stays Midnight-safe by relying on public aura instance IDs, public aura categories, slot/spec filtering, and short timing windows rather than secret aura fields.
+
 ## Features
 
 - Arena-only runtime display, with `Test Mode` for setup outside arena

@@ -31,6 +31,7 @@ local lastUnitFlagsTime = {}
 local lastFeignDeathTime = {}
 local lastFeignDeathState = {}
 local unitCanFeign = {}
+local lastMaxHealthChangeTime = {}
 local candidateEvidenceScratch = {}
 
 local E_CAST = AUTO_EVIDENCE.CAST
@@ -109,6 +110,9 @@ local function FormatEvidence(evidence)
     if evidence[AUTO_EVIDENCE.FEIGN_DEATH] then
         tags[#tags + 1] = AUTO_EVIDENCE.FEIGN_DEATH
     end
+    if evidence[AUTO_EVIDENCE.MAX_HEALTH] then
+        tags[#tags + 1] = AUTO_EVIDENCE.MAX_HEALTH
+    end
 
     return #tags > 0 and table.concat(tags, "+") or "none"
 end
@@ -176,6 +180,10 @@ local function BuildEvidenceSet(unit, detectionTime)
     if lastCastTime[unit] and math.abs(lastCastTime[unit] - detectionTime) <= CAST_WINDOW then
         evidence = evidence or {}
         evidence[AUTO_EVIDENCE.CAST] = true
+    end
+    if lastMaxHealthChangeTime[unit] and math.abs(lastMaxHealthChangeTime[unit] - detectionTime) <= EVIDENCE_TOLERANCE then
+        evidence = evidence or {}
+        evidence[AUTO_EVIDENCE.MAX_HEALTH] = true
     end
     return evidence
 end
@@ -565,6 +573,7 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
         scratch[AUTO_EVIDENCE.UNIT_FLAGS] = nil
         scratch[AUTO_EVIDENCE.FEIGN_DEATH] = nil
         scratch[AUTO_EVIDENCE.CAST] = nil
+        scratch[AUTO_EVIDENCE.MAX_HEALTH] = nil
 
         local hasEvidence = false
         if tracked.Evidence then
@@ -610,6 +619,70 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
     return bestRule, bestUnit
 end
 
+local function TryEarlyDetection(unit, tracked, startTime)
+    if not IsAutoTrackingActive() or not tracked or not tracked.Evidence then
+        return
+    end
+    if not tracked.Evidence[AUTO_EVIDENCE.CAST] then
+        return
+    end
+
+    local classToken = GetArenaUnitClass(unit)
+    if not classToken then
+        return
+    end
+    local specID = GetArenaUnitSpec(unit)
+    local slotIndex = GetArenaSlotFromUnit(unit)
+    if not slotIndex then
+        return
+    end
+
+    local function TryEarlyRuleList(ruleList)
+        if not ruleList then
+            return nil
+        end
+        local bestRule
+        local ambiguous = false
+        for i = 1, #ruleList do
+            local rule = ruleList[i]
+            if rule.EarlyDetect
+                and AuraTypeMatchesRule(tracked.AuraTypes, rule)
+                and EvidenceMatchesReq(rule.RequiresEvidence, tracked.Evidence)
+                and RuleMatchesTrackableSpell(rule, unit)
+                and not IsSpellOnCooldownForSlot(rule.SpellId, slotIndex)
+            then
+                if not bestRule then
+                    bestRule = rule
+                elseif bestRule.SpellId ~= rule.SpellId then
+                    ambiguous = true
+                end
+            end
+        end
+        if ambiguous then
+            return nil
+        end
+        return bestRule
+    end
+
+    local rule = TryEarlyRuleList(specID and MC:GetAutoTrackRulesBySpec(specID))
+        or TryEarlyRuleList(MC:GetAutoTrackRulesByClass(classToken))
+    if not rule then
+        return
+    end
+
+    tracked.EarlyDetected = true
+    local started = TryAutoStartRule(rule, unit, unit, startTime, rule.BuffDuration)
+    if started then
+        DebugAuto(
+            "Early-detected %s on %s (%s, evidence=%s)",
+            tostring(rule.SpellId),
+            unit,
+            FormatAuraTypes(tracked.AuraTypes),
+            FormatEvidence(tracked.Evidence)
+        )
+    end
+end
+
 local function TrackNewAura(unit, trackedAuras, auraInstanceID, info, now)
     local evidence = BuildEvidenceSet(unit, now)
     local castSnapshot = {}
@@ -622,6 +695,7 @@ local function TrackNewAura(unit, trackedAuras, auraInstanceID, info, now)
         AuraTypes = info.AuraTypes,
         Evidence = evidence,
         CastSnapshot = castSnapshot,
+        EarlyDetected = false,
     }
 
     DebugAuto(
@@ -651,10 +725,17 @@ local function TrackNewAura(unit, trackedAuras, auraInstanceID, info, now)
                 tracked.CastSnapshot[snapshotUnit] = snapshotTime
             end
         end
+
+        if not tracked.EarlyDetected then
+            TryEarlyDetection(unit, tracked, now)
+        end
     end)
 end
 
 local function OnAuraRemoved(unit, tracked, now, candidateUnits)
+    if tracked.EarlyDetected then
+        return true
+    end
     local measuredDuration = now - tracked.StartTime
     local rule, ruleUnit = FindBestCandidate(unit, tracked, measuredDuration, candidateUnits)
     if not rule then
@@ -779,6 +860,16 @@ local function RecordUnitFlagsChange(unit)
     end
 end
 
+local function RecordMaxHealthChange(unit)
+    if not IsArenaUnit(unit) then
+        return
+    end
+
+    -- Midnight exposes arena max health as a secret value, so use the event timing
+    -- as evidence instead of touching UnitHealthMax(unit) directly.
+    lastMaxHealthChangeTime[unit] = GetTime()
+end
+
 local function TryRecordDebuffEvidence(unit, updateInfo)
     if not IsArenaUnit(unit)
         or not updateInfo
@@ -808,6 +899,9 @@ local function OnTrackingEvent(_, event, ...)
     elseif event == "UNIT_ABSORB_AMOUNT_CHANGED" then
         local unit = ...
         RecordShield(unit)
+    elseif event == "UNIT_MAXHEALTH" then
+        local unit = ...
+        RecordMaxHealthChange(unit)
     elseif event == "UNIT_AURA" then
         local unit, updateInfo = ...
         TryRecordDebuffEvidence(unit, updateInfo)
@@ -824,6 +918,7 @@ function HB:InitializeEnemyCooldownTracking()
     trackingFrame:SetScript("OnEvent", OnTrackingEvent)
     trackingFrame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "arena1", "arena2", "arena3", "arena4", "arena5")
     trackingFrame:RegisterUnitEvent("UNIT_FLAGS", "arena1", "arena2", "arena3", "arena4", "arena5")
+    trackingFrame:RegisterUnitEvent("UNIT_MAXHEALTH", "arena1", "arena2", "arena3", "arena4", "arena5")
     trackingFrame:RegisterUnitEvent("UNIT_AURA", "arena1", "arena2", "arena3", "arena4", "arena5")
     trackingFrame:RegisterEvent("UNIT_ABSORB_AMOUNT_CHANGED")
 end
@@ -847,6 +942,7 @@ function HB:ResetEnemyCooldownTracking()
     lastFeignDeathTime = {}
     lastFeignDeathState = {}
     unitCanFeign = {}
+    lastMaxHealthChangeTime = {}
 end
 
 function HB:RefreshEnemyCooldownTracking()
