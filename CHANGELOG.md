@@ -2,6 +2,17 @@
 
 All notable changes for HandyBar are documented here.
 
+## 1.3.1 (2026-04-05)
+
+### Added
+
+- Added an option to show only spells that can be auto-tracked
+
+### Changed
+
+- Improved enemy cooldown tracking so dead or ghost arena units no longer interfere with updates
+- Enemy cooldowns now better respect real spell cooldown states
+
 ## 1.3.0 (2026-04-04)
 
 ### Added
