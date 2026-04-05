@@ -1,33 +1,63 @@
 # HandyBar (Retail 12.0.1+)
 
-HandyBar is a PvP arena addon for tracking enemy cooldowns with a hybrid workflow:
+HandyBar is a Retail World of Warcraft PvP arena addon for tracking enemy cooldowns with two complementary workflows:
 
-- automatic detection for many visible enemy cooldowns
-- manual click tracking as a reliable fallback
+- manual click tracking when you see an ability used
+- automatic enemy cooldown detection for many public and visible cooldown signals
 
-Version: `1.3.0`
+Version: `1.3.1`
 
 Saved variables: `HandyBarDB`
 
-Embedded libraries: Ace3 + MajorCooldowns
+Embedded libraries: `Ace3` + `MajorCooldowns`
 
-## Highlights
+## What HandyBar Does
 
-- Configurable spell bars
-- Arena-only visibility with a runtime Test Mode
-- Enemy class/spec detection from the Retail arena prep API
-- Per-bar visibility targeting: `All Enemies`, `Arena 1`, `Arena 2`, `Arena 3`
-- Optional duplication when multiple enemies share the same class/spec
-- Manual left-click start and right-click reset
-- Cooldown spiral, optional timer text, and class-colored borders
-- Charge support for spells that use multiple charges
-- Global cooldown overrides
-- Custom spell support
-- AceDB profiles
+HandyBar builds spell bars that appear in arena and only show cooldowns relevant to the enemy team you are facing.
 
-## Automatic Enemy Cooldown Detection
+Out of the box it:
 
-HandyBar can automatically start many enemy cooldowns in arena by combining:
+- creates two default bars: `Defensives` and `Offensives`
+- detects enemy class/spec information from the arena prep API
+- filters icons to the classes/specs currently present in the match
+- supports per-slot display targeting (`All Enemies`, `Arena 1`, `Arena 2`, `Arena 3`)
+- can duplicate icons when multiple enemies share the same class/spec
+- supports manual start/reset on click
+- supports automatic tracking when a cooldown can be inferred from public arena data
+
+The addon is designed as a practical arena tool, not a combat log oracle. If a spell cannot be auto-detected reliably, you can still track it manually with one click.
+
+## Core Workflow
+
+### 1. Arena enemy detection
+
+HandyBar primarily uses:
+
+- `ARENA_PREP_OPPONENT_SPECIALIZATIONS`
+- `GetNumArenaOpponentSpecs()`
+- `GetArenaOpponentSpec(i)`
+- `GetSpecializationInfoByID(specID)`
+
+If prep data is missing or incomplete, it falls back to `UnitClass("arenaX")` and preserves the best-known slot/spec mapping as the arena updates.
+
+This lets HandyBar:
+
+- show only spells relevant to the enemy comp
+- assign duplicated spell icons to specific arena slots
+- keep spec-specific tracking stable during `ARENA_OPPONENT_UPDATE`
+
+### 2. Manual tracking
+
+Manual tracking is always available on visible icons:
+
+- `Left-click`: start the cooldown
+- `Right-click`: reset the cooldown
+
+If an icon is slot-assigned, the click affects that enemy slot only. When duplicate mode is enabled, the top-left badge on the icon shows the arena slot number.
+
+### 3. Automatic tracking
+
+When `Automatic Enemy Cooldown Detection` is enabled, HandyBar listens to public arena signals such as:
 
 - `UNIT_AURA`
 - `UNIT_SPELLCAST_SUCCEEDED`
@@ -38,17 +68,38 @@ HandyBar can automatically start many enemy cooldowns in arena by combining:
   - `HELPFUL|EXTERNAL_DEFENSIVE`
   - `HELPFUL|IMPORTANT`
 
-The implementation is designed for Midnight-era addon restrictions:
+The detection pipeline is built to be compatible with Midnight-era restrictions:
 
-- no secret value comparisons
-- no direct reads of secret aura `spellId`, `duration`, or `expirationTime`
-- tracking is built around `auraInstanceID`, public filter membership, and timing evidence
+- no secret aura field comparisons
+- no direct dependence on hidden `spellId`, `duration`, or `expirationTime`
+- matching based on public aura instance IDs, aura filter membership, timing evidence, slot/spec matching, and known spell metadata
 
-This is intentionally a best-effort arena tracker. It works well for many visible defensives, externals, and important offensives, but spells without a visible/public aura still require manual clicks.
+HandyBar uses both:
+
+- explicit auto-track rules supplied by `MajorCooldowns`
+- a generic fallback matcher for visible buffs whose public aura duration and category strongly match a known cooldown
+
+Automatic tracking is intentionally best-effort. Spells with no visible/public aura or ambiguous evidence may still require manual clicks.
+
+## Features
+
+- Arena-only runtime display, with `Test Mode` for setup outside arena
+- Draggable, lockable bars with saved positions
+- Adjustable icon size, spacing, growth direction, wrapping, and display limits
+- Optional cooldown text with urgency coloring
+- Optional class-colored icon borders
+- Charge support for multi-charge spells
+- Global cooldown duration overrides
+- Custom spell registration by Spell ID
+- Automatic tooltip-based cooldown extraction for custom spells
+- Optional icon tooltips
+- Optional debug logging
+- AceDB profile support
+- English and French localization
 
 ## Installation
 
-Install the addon to:
+Install the addon in:
 
 `World of Warcraft/_retail_/Interface/AddOns/HandyBar/`
 
@@ -56,115 +107,203 @@ Then reload the UI with `/reload` or restart the game.
 
 ## Quick Start
 
-1. Open the options with `/hb`
-2. Enable `Test Mode` outside arena to place your bars
-3. Unlock the bars, move them, then lock them again
-4. Enable the spells you want to track in `Bars -> <Bar Name> -> Spells`
-5. Enable `Automatic Enemy Cooldown Detection` in `General` if you want hybrid tracking
+1. Open the addon with `/hb`.
+2. Enable `Test Mode`.
+3. Unlock the bars and move them where you want.
+4. Go to `Bars -> <Bar Name> -> Spells` and enable the spells you want.
+5. Optionally enable `Automatic Enemy Cooldown Detection` in `General`.
+6. Enter arena and verify that the bars only show spells relevant to the enemy team.
 
-## Match Usage
+On first run, HandyBar creates:
 
-### Automatic mode
+- `Defensives`
+- `Offensives`
 
-When automatic tracking is enabled, HandyBar tries to start tracked enemy cooldowns on its own whenever a visible/public arena signal is strong enough.
+You can keep those, edit them, or create your own bars.
 
-### Manual mode
+## Options Overview
 
-- Left-click an icon to start the cooldown manually
-- Right-click an icon to reset it
+### General
 
-Manual mode always remains available, even when automatic detection is enabled.
+The `General` tab includes:
+
+- `Test Mode`
+- `Automatic Enemy Cooldown Detection`
+- `Show Only Auto-Trackable Spells`
+- `Lock Bars`
+- `Icon Tooltips`
+- `Debug Mode`
+- `Reset All Cooldowns`
+- `Reset Configuration`
+
+Important behavior:
+
+- `Test Mode` is runtime-only
+- `Test Mode` is automatically disabled on reloads, zone changes, and real arena entry
+- `Show Only Auto-Trackable Spells` filters both the spell selection UI and visible runtime icons to only spells the auto-tracker can handle
+
+### Bars
+
+You can create any number of custom bars. Each bar has three sections:
+
+#### Appearance
+
+Per-bar appearance options:
+
+- enabled/disabled
+- icon size
+- spacing
+- `Max Icons Per Row`
+- `Icon Display Limit`
+- growth direction
+- cooldown text
+- class border
+- reset cooldowns for that bar
+- reset position
+- delete bar
+
+#### Arena Visibility
+
+Per-bar visibility options:
+
+- `All Enemies`
+- `Arena 1 Only`
+- `Arena 2 Only`
+- `Arena 3 Only`
+- `Duplicate Same Spec/Class`
+
+`Duplicate Same Spec/Class` is useful when multiple opponents share the same class or spec. With duplication enabled, HandyBar can render separate slot-aware icons instead of a single shared icon.
+
+#### Spells
+
+Each bar gets a class-organized spell picker powered by `MajorCooldowns`.
+
+The spell UI supports:
+
+- class groups
+- spec buckets such as `All Specs`, single-spec groups, and `Multiple Specs`
+- `Enable Default`
+- `Disable All`
+- tooltip summaries with cooldown, category, spell ID, and override state
+
+### Customize
+
+The `Customize` tab contains two tools:
+
+#### Cooldown Overrides
+
+Override the duration of any registered spell globally. Once enabled for a spell, the custom duration is used in:
+
+- tooltips
+- manual tracking
+- automatic tracking display
+- all bars using that spell
+
+#### Custom Spells
+
+Register your own spells by Spell ID with:
+
+- class
+- optional specialization
+- category
+- cooldown duration
+
+The form also supports:
+
+- previewing spell name and icon
+- auto-switching into edit mode if the spell already exists
+- automatic cooldown detection from the spell tooltip
+- editing and removing existing custom entries
+
+Custom spells are loaded into the internal `MajorCooldowns` registry during addon initialization and can be enabled per bar like any other spell.
+
+### Profiles
+
+HandyBar uses `AceDB-3.0` profiles. A `Profiles` panel is registered under the addon options so you can copy, reset, or swap configurations between characters and specializations.
+
+## Match Behavior
+
+During actual arena play, HandyBar follows a few important rules:
+
+- entering arena resets active cooldowns and refreshes enemy detection
+- leaving arena clears arena enemy state
+- bars are hidden outside arena unless `Test Mode` is active
+- dead or ghost enemy arena units are ignored by the auto-tracker
+- automatic tracking avoids duplicate starts when the same event is seen multiple times in a short window
+- if bars need to rebuild because enemy info changes, active cooldown state is preserved when possible
 
 ## Slash Commands
+
+- `/hb`
+- `/handybar`
+- `/hb test`
+- `/hb lock`
+- `/hb reset`
+
+Behavior:
 
 - `/hb` opens the options
 - `/hb test` toggles Test Mode
 - `/hb lock` toggles bar locking
 - `/hb reset` resets all active cooldowns
 
-## Configuration Overview
-
-### General
-
-- `Test Mode`
-- `Lock Bars`
-- `Automatic Enemy Cooldown Detection`
-- `Debug Mode`
-- `Reset All Cooldowns`
-- `Reset Configuration`
-
-### Bars
-
-Each bar supports:
-
-- enable/disable
-- icon size
-- spacing
-- growth direction
-- max icons per row
-- icon display limit
-- cooldown text
-- class borders
-- arena visibility filter
-- duplicate same class/spec handling
-
-### Customize
-
-- Global cooldown overrides for existing MajorCooldowns entries
-- Custom spell registration by Spell ID
-- Automatic tooltip-based cooldown extraction for custom spells
-
-## Arena Detection
-
-HandyBar primarily uses:
-
-- `ARENA_PREP_OPPONENT_SPECIALIZATIONS`
-- `GetNumArenaOpponentSpecs()`
-- `GetArenaOpponentSpec(i)`
-- `GetSpecializationInfoByID(specID)`
-
-If prep spec data is not immediately available, it falls back to `UnitClass("arenaX")` and keeps the best-known slot/spec mapping as the match progresses.
-
 ## Troubleshooting
 
-### I see no icons in arena
+### No icons appear in arena
 
-Check the following:
+Check:
 
-1. The bar is enabled
-2. The relevant spells are enabled in that bar
-3. Arena visibility is not filtering the spell away
-4. You are actually in arena, or Test Mode is enabled
+1. The bar is enabled.
+2. The relevant spells are enabled on that bar.
+3. The bar is not filtered to a different arena slot.
+4. The enemy team actually contains the matching class/spec.
+5. `Show Only Auto-Trackable Spells` is not hiding manual-only entries.
+
+### No icons appear outside arena
+
+That is expected unless `Test Mode` is enabled.
 
 ### Automatic tracking misses some spells
 
-That is expected for some abilities. Automatic tracking only works when HandyBar can infer the cooldown from public arena information. Hidden, aura-less, or highly ambiguous spells may still require manual clicks.
+That is expected for some abilities. Auto-tracking only works when HandyBar can infer a cooldown from public arena evidence. Hidden, aura-less, or ambiguous spells may still require manual clicks.
 
-If you want to inspect what the tracker is seeing:
+If you want to inspect what the tracker is doing:
 
-1. Enable `Debug Mode`
-2. Enter an arena
-3. Look for logs such as:
+1. Enable `Debug Mode`.
+2. Enter arena.
+3. Watch the chat output for messages such as:
    - `Tracking aura ...`
    - `Generic match ...`
+   - `Auto-detected ...`
    - `No rule match ...`
 
-### Test Mode turns itself off
+### Test Mode turned itself off
 
-This is intentional. Test Mode is runtime-only and is automatically disabled on reloads, zone changes, and real arena entry.
+This is intentional. Test Mode never persists through:
 
-## Important Files
+- reloads
+- zone changes
+- entering a real arena
+
+## File Layout
 
 - `HandyBar.toc`: addon metadata and load order
-- `Core.lua`: addon setup, DB, slash commands, shared helpers
-- `Modules/Bar.lua`: buttons, layout, timers, click handling
-- `Modules/Arena.lua`: arena enemy detection and slot/spec mapping
+- `Core.lua`: addon setup, saved variables, slash commands, shared helpers, custom spell registration
+- `Modules/Bar.lua`: bar creation, button pooling, layout, timers, charge handling, click behavior
+- `Modules/Arena.lua`: arena detection, class/spec mapping, slot matching
 - `Modules/EnemyCooldowns.lua`: automatic enemy cooldown detection
-- `Modules/TestMode.lua`: runtime test mode
+- `Modules/TestMode.lua`: runtime-only test mode
 - `Options.lua`: AceConfig options UI
+- `Locale/enUS.lua`: English strings
+- `Locale/frFR.lua`: French strings
 
 ## Notes
 
-HandyBar ships with Ace3 and MajorCooldowns inside `Libs/`.
+HandyBar ships with embedded `Ace3` and `MajorCooldowns` libraries in `Libs/`.
 
-Automatic detection is meant to reduce manual workload, not fully replace manual arena awareness. If a spell is not auto-detected, you can still track it immediately with a click.
+The addon is strongest when used as a hybrid tracker:
+
+- automatic tracking for visible/public enemy cooldowns
+- manual clicks for anything the game does not expose clearly enough
+
+That combination keeps the addon useful even when API visibility changes or a specific spell cannot be auto-detected safely.
