@@ -2,6 +2,10 @@
 
 All notable changes for HandyBar are documented here.
 
+## 1.3.2 (2026-04-05)
+- Rogue Evasion auto-tracking no longer conflicts with Subtlety Symbols of Death fallback rules
+- Paladin Divine Shield cooldown is now set to 210s to match the near-universal Unbreakable Spirit talent baseline
+
 ## 1.3.1 (2026-04-05)
 
 ### Added
