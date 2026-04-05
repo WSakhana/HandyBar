@@ -30,6 +30,7 @@ local lastCastTime = {}
 local lastUnitFlagsTime = {}
 local lastFeignDeathTime = {}
 local lastFeignDeathState = {}
+local unitCanFeign = {}
 local candidateEvidenceScratch = {}
 
 local E_CAST = AUTO_EVIDENCE.CAST
@@ -135,7 +136,7 @@ end
 
 local function CollectCurrentTrackedAuras(unit)
     local current = {}
-    if not UnitExists(unit) then
+    if not UnitExists(unit) or UnitIsDeadOrGhost(unit) then
         return current
     end
 
@@ -418,7 +419,21 @@ local function MatchGenericRule(unit, auraTypes, measuredDuration, evidence)
     }
 end
 
-local function MatchRule(unit, auraTypes, measuredDuration, evidence)
+local function IsSpellOnCooldownForSlot(spellID, slotIndex)
+    if not spellID or not slotIndex then
+        return false
+    end
+    local onCooldown = false
+    local now = GetTime()
+    HB:ForEachSpellButton(spellID, slotIndex, function(button)
+        if button.cooldownEndTime and button.cooldownEndTime > now then
+            onCooldown = true
+        end
+    end)
+    return onCooldown
+end
+
+local function MatchRule(unit, auraTypes, measuredDuration, evidence, slotIndex)
     local classToken = GetArenaUnitClass(unit)
     if not classToken then
         return nil
@@ -433,6 +448,7 @@ local function MatchRule(unit, auraTypes, measuredDuration, evidence)
         local bestEvidenceSpecificity
         local bestAuraSpecificity
         local bestDurationDistance
+        local fallback
         local ambiguous = false
         for i = 1, #ruleList do
             local rule = ruleList[i]
@@ -441,29 +457,36 @@ local function MatchRule(unit, auraTypes, measuredDuration, evidence)
                 and DurationMatchesRule(rule, measuredDuration)
                 and RuleMatchesTrackableSpell(rule, unit)
             then
-                local evidenceSpecificity = GetEvidenceSpecificity(rule.RequiresEvidence)
-                local auraSpecificity = GetAuraSpecificity(rule)
-                local durationDistance = GetRuleDurationDistance(rule, measuredDuration)
-                local isBetter = not bestRule
-                    or evidenceSpecificity > bestEvidenceSpecificity
-                    or (evidenceSpecificity == bestEvidenceSpecificity and auraSpecificity > bestAuraSpecificity)
-                    or (evidenceSpecificity == bestEvidenceSpecificity
-                        and auraSpecificity == bestAuraSpecificity
-                        and durationDistance < bestDurationDistance)
+                local alreadyOnCd = slotIndex and rule.SpellId and IsSpellOnCooldownForSlot(rule.SpellId, slotIndex)
+                if alreadyOnCd then
+                    if not fallback then
+                        fallback = rule
+                    end
+                else
+                    local evidenceSpecificity = GetEvidenceSpecificity(rule.RequiresEvidence)
+                    local auraSpecificity = GetAuraSpecificity(rule)
+                    local durationDistance = GetRuleDurationDistance(rule, measuredDuration)
+                    local isBetter = not bestRule
+                        or evidenceSpecificity > bestEvidenceSpecificity
+                        or (evidenceSpecificity == bestEvidenceSpecificity and auraSpecificity > bestAuraSpecificity)
+                        or (evidenceSpecificity == bestEvidenceSpecificity
+                            and auraSpecificity == bestAuraSpecificity
+                            and durationDistance < bestDurationDistance)
 
-                if isBetter then
-                    bestRule = rule
-                    bestEvidenceSpecificity = evidenceSpecificity
-                    bestAuraSpecificity = auraSpecificity
-                    bestDurationDistance = durationDistance
-                    ambiguous = false
-                elseif bestRule
-                    and bestRule.SpellId ~= rule.SpellId
-                    and evidenceSpecificity == bestEvidenceSpecificity
-                    and auraSpecificity == bestAuraSpecificity
-                    and math.abs(durationDistance - bestDurationDistance) <= 0.05
-                then
-                    ambiguous = true
+                    if isBetter then
+                        bestRule = rule
+                        bestEvidenceSpecificity = evidenceSpecificity
+                        bestAuraSpecificity = auraSpecificity
+                        bestDurationDistance = durationDistance
+                        ambiguous = false
+                    elseif bestRule
+                        and bestRule.SpellId ~= rule.SpellId
+                        and evidenceSpecificity == bestEvidenceSpecificity
+                        and auraSpecificity == bestAuraSpecificity
+                        and math.abs(durationDistance - bestDurationDistance) <= 0.05
+                    then
+                        ambiguous = true
+                    end
                 end
             end
         end
@@ -472,7 +495,7 @@ local function MatchRule(unit, auraTypes, measuredDuration, evidence)
             return nil
         end
 
-        return bestRule
+        return bestRule or fallback
     end
 
     return TryRuleList(specID and MC:GetAutoTrackRulesBySpec(specID))
@@ -559,7 +582,8 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
             hasEvidence = true
         end
 
-        local candidateRule = MatchRule(candidateUnit, tracked.AuraTypes, measuredDuration, hasEvidence and scratch or nil)
+        local candidateSlotIndex = GetArenaSlotFromUnit(candidateUnit)
+        local candidateRule = MatchRule(candidateUnit, tracked.AuraTypes, measuredDuration, hasEvidence and scratch or nil, candidateSlotIndex)
         if not candidateRule then
             return
         end
@@ -720,7 +744,10 @@ end
 
 local function RecordCast(unit)
     if IsArenaUnit(unit) then
-        lastCastTime[unit] = GetTime()
+        local now = GetTime()
+        if lastCastTime[unit] ~= now then
+            lastCastTime[unit] = now
+        end
     end
 end
 
@@ -736,7 +763,13 @@ local function RecordUnitFlagsChange(unit)
     end
 
     local now = GetTime()
-    local isFeign = UnitIsFeignDeath(unit) or false
+    local canFeign = unitCanFeign[unit]
+    if canFeign == nil then
+        local classToken = GetArenaUnitClass(unit)
+        canFeign = classToken == "HUNTER"
+        unitCanFeign[unit] = canFeign
+    end
+    local isFeign = canFeign and UnitIsFeignDeath(unit) or false
     if isFeign and not lastFeignDeathState[unit] then
         lastFeignDeathTime[unit] = now
     end
@@ -813,6 +846,7 @@ function HB:ResetEnemyCooldownTracking()
     lastUnitFlagsTime = {}
     lastFeignDeathTime = {}
     lastFeignDeathState = {}
+    unitCanFeign = {}
 end
 
 function HB:RefreshEnemyCooldownTracking()
