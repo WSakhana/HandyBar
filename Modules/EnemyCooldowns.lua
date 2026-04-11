@@ -251,6 +251,7 @@ local function DurationMatchesRule(rule, measuredDuration)
     end
     if rule.CanCancelEarly then
         return measuredDuration <= (rule.BuffDuration + RULE_TOLERANCE)
+            and (not rule.MinCancelDuration or measuredDuration >= rule.MinCancelDuration)
     end
     return math.abs(measuredDuration - rule.BuffDuration) <= RULE_TOLERANCE
 end

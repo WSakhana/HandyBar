@@ -2,6 +2,14 @@
 
 All notable changes for HandyBar are documented here.
 
+## 1.3.3 (2026-04-11)
+
+### Changed
+
+- Enemy cooldown auto-detection is now better at telling similar buffs apart in arena
+- Added support for Evoker Time Stop in automatic tracking
+- Improved several tracked buff durations so automatic detection is more reliable
+
 ## 1.3.2 (2026-04-05)
 - feat: Implement early detection for enemy cooldowns and add max health tracking to auto-tracking flow
 - Rogue Evasion auto-tracking no longer conflicts with Subtlety Symbols of Death fallback rules

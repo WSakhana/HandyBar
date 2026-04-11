@@ -3,7 +3,7 @@
 ## Notes: Manual + automatic enemy cooldown tracking for PvP Arenas
 ## Notes-frFR: Suivi manuel + automatique des cooldowns ennemis en arène PvP
 ## Author: HandyBar
-## Version: 1.3.2
+## Version: 1.3.3
 ## SavedVariables: HandyBarDB
 ## X-Category: PvP
 ## IconTexture: Interface\Icons\Spell_Nature_TimeStop
