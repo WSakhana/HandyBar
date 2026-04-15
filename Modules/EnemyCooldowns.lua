@@ -27,6 +27,7 @@ local lastAutoTriggerAt = {}
 local lastDebuffTime = {}
 local lastShieldTime = {}
 local lastCastTime = {}
+local lastCastSpellIds = {}
 local lastUnitFlagsTime = {}
 local lastFeignDeathTime = {}
 local lastFeignDeathState = {}
@@ -287,10 +288,46 @@ local function GetRuleDurationDistance(rule, measuredDuration)
     return math.abs((rule and rule.BuffDuration or 0) - measuredDuration)
 end
 
+local function ExtractKnownSpellIDs(castSpellIdSnapshot, unit, detectionTime)
+    local castSpellDataList = castSpellIdSnapshot and castSpellIdSnapshot[unit]
+    local knownSpellIDs
+    if not castSpellDataList then
+        return nil
+    end
+
+    for i = 1, #castSpellDataList do
+        local castSpellData = castSpellDataList[i]
+        if castSpellData and math.abs(castSpellData.Time - detectionTime) <= CAST_WINDOW then
+            knownSpellIDs = knownSpellIDs or {}
+            knownSpellIDs[#knownSpellIDs + 1] = castSpellData.SpellId
+        end
+    end
+
+    return knownSpellIDs
+end
+
 local function RuleMatchesTrackableSpell(rule, unit)
     local spellData = GetKnownSpellData(rule.SpellId)
     local slotIndex = GetArenaSlotFromUnit(unit)
     return spellData ~= nil and slotIndex ~= nil and HB:SpellMatchesArenaSlot(spellData, slotIndex)
+end
+
+local function FindRuleBySpellID(ruleList, auraTypes, spellID, unit)
+    if not ruleList or not spellID then
+        return nil
+    end
+
+    for i = 1, #ruleList do
+        local rule = ruleList[i]
+        if rule.SpellId == spellID
+            and AuraTypeMatchesRule(auraTypes, rule)
+            and RuleMatchesTrackableSpell(rule, unit)
+        then
+            return rule
+        end
+    end
+
+    return nil
 end
 
 local function SpellDataMatchesSpec(spellData, specID)
@@ -442,12 +479,25 @@ local function IsSpellOnCooldownForSlot(spellID, slotIndex)
     return onCooldown
 end
 
-local function MatchRule(unit, auraTypes, measuredDuration, evidence, slotIndex)
+local function MatchRule(unit, auraTypes, measuredDuration, evidence, slotIndex, knownSpellIDs)
     local classToken = GetArenaUnitClass(unit)
     if not classToken then
         return nil
     end
     local specID = GetArenaUnitSpec(unit)
+    local specRules = specID and MC:GetAutoTrackRulesBySpec(specID)
+    local classRules = MC:GetAutoTrackRulesByClass(classToken)
+
+    if knownSpellIDs then
+        for i = 1, #knownSpellIDs do
+            local spellID = knownSpellIDs[i]
+            local fastRule = FindRuleBySpellID(specRules, auraTypes, spellID, unit)
+                or FindRuleBySpellID(classRules, auraTypes, spellID, unit)
+            if fastRule then
+                return fastRule
+            end
+        end
+    end
 
     local function TryRuleList(ruleList)
         if not ruleList then
@@ -507,8 +557,8 @@ local function MatchRule(unit, auraTypes, measuredDuration, evidence, slotIndex)
         return bestRule or fallback
     end
 
-    return TryRuleList(specID and MC:GetAutoTrackRulesBySpec(specID))
-        or TryRuleList(MC:GetAutoTrackRulesByClass(classToken))
+    return TryRuleList(specRules)
+        or TryRuleList(classRules)
         or MatchGenericRule(unit, auraTypes, measuredDuration, evidence)
 end
 
@@ -566,6 +616,7 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
     local bestUnit = unit
     local bestCastTime
     local isExternal = tracked.AuraTypes[AUTO_AURA.EXTERNAL_DEFENSIVE] == true
+    local ambiguousWithoutCast = false
 
     local function Consider(candidateUnit, isTarget)
         local scratch = candidateEvidenceScratch
@@ -593,7 +644,15 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
         end
 
         local candidateSlotIndex = GetArenaSlotFromUnit(candidateUnit)
-        local candidateRule = MatchRule(candidateUnit, tracked.AuraTypes, measuredDuration, hasEvidence and scratch or nil, candidateSlotIndex)
+        local knownSpellIDs = ExtractKnownSpellIDs(tracked.CastSpellIdSnapshot, candidateUnit, tracked.StartTime)
+        local candidateRule = MatchRule(
+            candidateUnit,
+            tracked.AuraTypes,
+            measuredDuration,
+            hasEvidence and scratch or nil,
+            candidateSlotIndex,
+            knownSpellIDs
+        )
         if not candidateRule then
             return
         end
@@ -606,6 +665,9 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
             bestRule = candidateRule
             bestUnit = candidateUnit
             bestCastTime = castTime
+            ambiguousWithoutCast = false
+        elseif not castTime and not bestCastTime then
+            ambiguousWithoutCast = true
         end
     end
 
@@ -615,6 +677,10 @@ local function FindBestCandidate(unit, tracked, measuredDuration, candidateUnits
         if candidateUnit ~= unit then
             Consider(candidateUnit, false)
         end
+    end
+
+    if ambiguousWithoutCast and not bestCastTime then
+        return nil, nil
     end
 
     return bestRule, bestUnit
@@ -636,6 +702,31 @@ local function TryEarlyDetection(unit, tracked, startTime)
     local slotIndex = GetArenaSlotFromUnit(unit)
     if not slotIndex then
         return
+    end
+    local specRules = specID and MC:GetAutoTrackRulesBySpec(specID)
+    local classRules = MC:GetAutoTrackRulesByClass(classToken)
+    local knownSpellIDs = ExtractKnownSpellIDs(tracked.CastSpellIdSnapshot, unit, tracked.StartTime)
+
+    if knownSpellIDs then
+        for i = 1, #knownSpellIDs do
+            local spellID = knownSpellIDs[i]
+            local exactRule = FindRuleBySpellID(specRules, tracked.AuraTypes, spellID, unit)
+                or FindRuleBySpellID(classRules, tracked.AuraTypes, spellID, unit)
+            if exactRule and not IsSpellOnCooldownForSlot(exactRule.SpellId, slotIndex) then
+                tracked.EarlyDetected = true
+                local started = TryAutoStartRule(exactRule, unit, unit, startTime, exactRule.BuffDuration)
+                if started then
+                    DebugAuto(
+                        "Exact spell-id detected %s on %s (%s, evidence=%s)",
+                        tostring(exactRule.SpellId),
+                        unit,
+                        FormatAuraTypes(tracked.AuraTypes),
+                        FormatEvidence(tracked.Evidence)
+                    )
+                end
+                return
+            end
+        end
     end
 
     local function TryEarlyRuleList(ruleList)
@@ -665,8 +756,8 @@ local function TryEarlyDetection(unit, tracked, startTime)
         return bestRule
     end
 
-    local rule = TryEarlyRuleList(specID and MC:GetAutoTrackRulesBySpec(specID))
-        or TryEarlyRuleList(MC:GetAutoTrackRulesByClass(classToken))
+    local rule = TryEarlyRuleList(specRules)
+        or TryEarlyRuleList(classRules)
     if not rule then
         return
     end
@@ -687,8 +778,22 @@ end
 local function TrackNewAura(unit, trackedAuras, auraInstanceID, info, now)
     local evidence = BuildEvidenceSet(unit, now)
     local castSnapshot = {}
+    local castSpellIdSnapshot = {}
     for snapshotUnit, snapshotTime in pairs(lastCastTime) do
         castSnapshot[snapshotUnit] = snapshotTime
+    end
+    for snapshotUnit, castSpellDataList in pairs(lastCastSpellIds) do
+        local filtered = nil
+        for i = 1, #castSpellDataList do
+            local castSpellData = castSpellDataList[i]
+            if math.abs(castSpellData.Time - now) <= CAST_WINDOW then
+                filtered = filtered or {}
+                filtered[#filtered + 1] = castSpellData
+            end
+        end
+        if filtered then
+            castSpellIdSnapshot[snapshotUnit] = filtered
+        end
     end
 
     trackedAuras[auraInstanceID] = {
@@ -696,6 +801,7 @@ local function TrackNewAura(unit, trackedAuras, auraInstanceID, info, now)
         AuraTypes = info.AuraTypes,
         Evidence = evidence,
         CastSnapshot = castSnapshot,
+        CastSpellIdSnapshot = castSpellIdSnapshot,
         EarlyDetected = false,
     }
 
@@ -724,6 +830,30 @@ local function TrackNewAura(unit, trackedAuras, auraInstanceID, info, now)
         for snapshotUnit, snapshotTime in pairs(lastCastTime) do
             if math.abs(snapshotTime - now) <= CAST_WINDOW and not tracked.CastSnapshot[snapshotUnit] then
                 tracked.CastSnapshot[snapshotUnit] = snapshotTime
+            end
+        end
+
+        for snapshotUnit, castSpellDataList in pairs(lastCastSpellIds) do
+            for i = 1, #castSpellDataList do
+                local castSpellData = castSpellDataList[i]
+                if math.abs(castSpellData.Time - now) <= CAST_WINDOW then
+                    local existing = tracked.CastSpellIdSnapshot[snapshotUnit]
+                    if not existing then
+                        tracked.CastSpellIdSnapshot[snapshotUnit] = { castSpellData }
+                    else
+                        local found = false
+                        for j = 1, #existing do
+                            local existingData = existing[j]
+                            if existingData.SpellId == castSpellData.SpellId and existingData.Time == castSpellData.Time then
+                                found = true
+                                break
+                            end
+                        end
+                        if not found then
+                            existing[#existing + 1] = castSpellData
+                        end
+                    end
+                end
             end
         end
 
@@ -824,11 +954,40 @@ local function RescanAllArenaUnits()
     end
 end
 
-local function RecordCast(unit)
+local function RecordCast(unit, spellID)
     if IsArenaUnit(unit) then
         local now = GetTime()
         if lastCastTime[unit] ~= now then
             lastCastTime[unit] = now
+        end
+
+        if type(spellID) == "number"
+            and (type(issecretvalue) ~= "function" or not issecretvalue(spellID))
+        then
+            local castSpellDataList = lastCastSpellIds[unit]
+            if not castSpellDataList then
+                castSpellDataList = {}
+                lastCastSpellIds[unit] = castSpellDataList
+            end
+
+            castSpellDataList[#castSpellDataList + 1] = {
+                SpellId = spellID,
+                Time = now,
+            }
+
+            local cutoff = now - CAST_WINDOW
+            local keepIndex = 1
+            for i = 1, #castSpellDataList do
+                if castSpellDataList[i].Time >= cutoff then
+                    if i ~= keepIndex then
+                        castSpellDataList[keepIndex] = castSpellDataList[i]
+                    end
+                    keepIndex = keepIndex + 1
+                end
+            end
+            for i = keepIndex, #castSpellDataList do
+                castSpellDataList[i] = nil
+            end
         end
     end
 end
@@ -892,8 +1051,8 @@ end
 
 local function OnTrackingEvent(_, event, ...)
     if event == "UNIT_SPELLCAST_SUCCEEDED" then
-        local unit = ...
-        RecordCast(unit)
+        local unit, _, spellID = ...
+        RecordCast(unit, spellID)
     elseif event == "UNIT_FLAGS" then
         local unit = ...
         RecordUnitFlagsChange(unit)
@@ -939,6 +1098,7 @@ function HB:ResetEnemyCooldownTracking()
     lastDebuffTime = {}
     lastShieldTime = {}
     lastCastTime = {}
+    lastCastSpellIds = {}
     lastUnitFlagsTime = {}
     lastFeignDeathTime = {}
     lastFeignDeathState = {}

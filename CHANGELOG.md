@@ -2,6 +2,14 @@
 
 All notable changes for HandyBar are documented here.
 
+## 1.3.4 (2026-04-15)
+
+### Changed
+
+- Enemy cooldown auto-detection now prefers exact cast spell matches when available and avoids more ambiguous arena attributions
+- Paladin automatic tracking evidence was aligned with MiniCC-style behavior for Bubble, BoP, and Spellwarding
+- Updated the TOC file to include the 12.0.5 interface versions
+
 ## 1.3.3 (2026-04-11)
 
 ### Changed
