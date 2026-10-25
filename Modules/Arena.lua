@@ -4,6 +4,12 @@
 ------------------------------------------------------------------------
 local addonName, ns = ...
 local HB = ns.HB
+local GetSpecInfo = GetSpecializationInfoByID
+
+local function ReadableValue(value)
+    if issecretvalue and issecretvalue(value) then return nil end
+    return value
+end
 
 local function ResetArenaEnemyState(self)
     self.enemyClasses = {}
@@ -142,15 +148,19 @@ function HB:DetectArenaOpponents()
     end
     
     for i = 1, 5 do
-        local specID = GetArenaOpponentSpec and (GetArenaOpponentSpec(i) or 0) or 0
-        if specID > 0 then
+        local specID
+        if GetArenaOpponentSpec then specID = ReadableValue(GetArenaOpponentSpec(i)) end
+        if type(specID) ~= "number" then specID = 0 end
+        if specID > 0 and GetSpecInfo then
             -- GetSpecializationInfoByID returns: id, name, description, icon, role, classFile, className
-            local _, _, _, _, _, classFile = GetSpecializationInfoByID(specID)
+            local _, _, _, _, _, classFile = GetSpecInfo(specID)
+            classFile = ReadableValue(classFile)
             addEnemy(i, classFile, specID)
         else
             local unitID = "arena" .. i
             if UnitExists(unitID) then
                 local _, classFile = UnitClass(unitID)
+                classFile = ReadableValue(classFile) or previousSlotClasses[i]
                 local preservedSpec = nil
                 if classFile and classFile == previousSlotClasses[i] then
                     preservedSpec = previousSlotSpecs[i]
@@ -182,7 +192,8 @@ function HB:DetectArenaOpponents()
         for classFile, specs in pairs(self.enemySpecsByClass) do
             local names = {}
             for specID in pairs(specs) do
-                local _, specName = GetSpecializationInfoByID(specID)
+                local _, specName
+                if GetSpecInfo then _, specName = GetSpecInfo(specID) end
                 names[#names + 1] = specName or tostring(specID)
             end
             table.sort(names)

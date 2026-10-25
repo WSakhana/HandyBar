@@ -1,6 +1,6 @@
-# Changelog - HandyBar
+## 1.3.5 - WoW 12.1.5 Compatibility
 
-All notable changes for HandyBar are documented here.
+- Updated compatibility for WoW 12.1.5.
 
 ## 1.3.4 (2026-04-15)
 
