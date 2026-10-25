@@ -1,6 +1,7 @@
 ## 1.3.5 - WoW 12.1.5 Compatibility
 
 - Updated compatibility for WoW 12.1.5.
+- Fixed errors when arena specializations are restricted.
 
 ## 1.3.4 (2026-04-15)
 
